@@ -1,0 +1,89 @@
+<ion-header>
+  <ion-toolbar>
+    <div class="back">
+      <ion-back-button color="secondary" defaultHref="opening" text=""></ion-back-button>
+    </div>
+    <div class="header_title">設定</div>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-list>
+    <ion-item>
+      <div class="button_area">
+        利用するセンサー情報<br/>
+        <ion-segment value="{{settingSelectedSensorMode}}" (ionChange)="onSettingSelectedSensorMode($event)">
+          <ion-segment-button value="smartphoneOnly">
+            <ion-label>端末センサーのみ</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="canDataOnly">
+            <ion-label>車載BLEのみ</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="combination">
+            <ion-label>併用</ion-label>
+          </ion-segment-button>
+        </ion-segment>
+      </div>
+    </ion-item>
+    <ion-item>
+      <div class="button_area">
+        録画機能<br/>
+        <ion-segment value="{{settingRecording}}" (ionChange)="onSettingRecording($event)" [disabled]="!hasAndroid">
+          <ion-segment-button value="enable">
+            <ion-label>有効</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="disable">
+            <ion-label>無効</ion-label>
+          </ion-segment-button>
+        </ion-segment>
+      </div>
+    </ion-item>
+    <ion-item>
+      <div class="button_area">
+        アプリログを端末に保存<br/>
+        <ion-segment value="{{settingLogStorage}}" (ionChange)="onSettingLogStorage($event)" [disabled]="!hasAndroid">
+          <ion-segment-button value="enable">
+            <ion-label>有効</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="disable">
+            <ion-label>無効</ion-label>
+          </ion-segment-button>
+        </ion-segment>
+      </div>
+    </ion-item>
+    <ion-item>
+      <div class="button_area">
+        センサーログを端末に保存<br/>
+        <ion-segment value="{{settingSensorLogStorage}}" (ionChange)="onSettingSensorLogStorage($event)" [disabled]="!hasAndroid">
+          <ion-segment-button value="enable">
+            <ion-label>有効</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="disable">
+            <ion-label>無効</ion-label>
+          </ion-segment-button>
+        </ion-segment>
+      </div>
+    </ion-item>
+    <ion-item>
+      <div class="button_area">
+        アプリ設定用JSON<br/>
+        <ion-button shape="outline" class="button_style" (click)="onScoreJsonFile('update')">アプリを更新</ion-button>
+        <ion-button shape="outline" class="button_style" (click)="onScoreJsonFile('save')">端末にコピー</ion-button>
+      </div>
+    </ion-item>
+    <ion-item>
+      <div class="button_area">
+        運転診断スコアロジック<br/>
+        <ion-button shape="outline" class="button_style" (click)="onScoreLogicFile('update')">アプリを更新</ion-button>
+        <ion-button shape="outline" class="button_style" (click)="onScoreLogicFile('save')">端末にコピー</ion-button>
+        <ion-button shape="outline" class="button_style" (click)="onScoreLogicFile('edit')">直接編集</ion-button>
+      </div>
+    </ion-item>
+
+  </ion-list>
+
+  <a id="save" style="visibility: hidden;"></a>
+
+  <input type="file" id="score_json_update" style="visibility: hidden;"/>
+  <input type="file" id="score_logic_update" style="visibility: hidden;"/>
+</ion-content>

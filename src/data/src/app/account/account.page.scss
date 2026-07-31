@@ -1,0 +1,63 @@
+ion-input {
+  border: solid 1px gray;
+}
+
+ion-grid {
+  padding-top: 25px;
+}
+
+ion-row {
+  margin: 5px;
+  padding-top:5px;
+}
+
+ion-col {
+  position: relative;
+}
+
+ion-select {
+  border: solid 1px gray;
+}
+
+.header_title {
+  font-weight: bold;
+  font-size: 1.2em;
+  color: var(--ion-color-primary);
+  text-align: center;
+  height:40px;
+}
+
+.title {
+  position: absolute;
+  top: 50%;
+  -webkit-transform : translateY(-50%);
+  transform : translateY(-50%);
+  width: 100%;
+
+  font-weight: bold;
+  font-size: 1.0em;
+}
+
+.select_root {
+   overflow: hidden;
+   width: 100%;
+}
+
+.select_item {
+   float: left;
+   margin-right: 5px;
+}
+
+.button_div {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.button_div ion-button {
+  margin-top: 20px;
+}
+
+.height {
+  width: 80px;
+  display: inline-block;
+}

@@ -1,0 +1,544 @@
+<ion-header>
+  <ion-toolbar>
+    <div class="back">
+      <ion-back-button color="secondary" defaultHref="opening" text=""></ion-back-button>
+    </div>
+    <div class="header_title">運転診断スコアロジックを修正</div>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <form [formGroup]="ionicForm">
+    <div class="text_area">
+      <ion-textarea class="score_logic" rows="26" value="{{scoreLogicText}}" formControlName="scoreLogicText"></ion-textarea>
+    </div>
+    <div class="button_area" *ngIf="hasAndroid">
+      <ion-button class="button_style" color="primary" (click)="onSaveScoreLogic()" [disabled]="scoreLogicRunning" >保存</ion-button>
+    </div>
+    <div class="button_area" *ngIf="!hasAndroid">
+      <ion-button class="button_style" color="primary" (click)="onSaveScoreLogic()" [disabled]="scoreLogicRunning" >保存</ion-button>
+      <ion-button class="button_style" color="secondary" (click)="showSensorFileUploadDialog()" [disabled]="scoreLogicRunning" *ngIf="!sensorLogLoaded">センサーログ<br/>取込</ion-button>
+      <ion-button class="button_style" color="secondary" (click)="onClearSensorLog()" [disabled]="scoreLogicRunning" *ngIf="sensorLogLoaded">センサーログ<br/>クリア</ion-button>
+      <ion-button class="button_style" color="secondary" (click)="runScoreLogic()" [disabled]="!sensorLogLoaded" *ngIf="!scoreLogicRunning">運転診断<br/>実行</ion-button>
+      <ion-button class="button_style" color="secondary" (click)="onStopScoreLogic('運転診断 停止')" *ngIf="scoreLogicRunning">運転診断<br/>停止</ion-button>
+    </div>
+  </form>
+
+  <ion-grid *ngIf="!hasAndroid">
+    <ion-row>
+      <ion-col class="bold">
+        {{resultTitle}}
+      </ion-col>
+    </ion-row>
+  </ion-grid>
+
+  <ion-grid class="score_logic_result" *ngIf="!hasAndroid">
+    <ion-row>
+      <ion-col class="left">
+        【運転診断結果】
+      </ion-col>
+    </ion-row>
+    <ion-row class="col_right" *ngIf="scoreLogic !== undefined && sensorData !== undefined">
+      <ion-col size="3" class="resultText">{{labelScoreAll}}: {{scoreLogic.scoreOverAll.toFixed(2)}}</ion-col>
+      <ion-col size="5">geolocation.speed/heading/accuracy</ion-col>
+      <ion-col size="2">{{(sensorData.geolocation.speed*3.6).toFixed(1)}}km/h</ion-col>
+      <ion-col size="1">
+        <div *ngIf="  0 <= sensorData.geolocation.heading && sensorData.geolocation.heading < 22">北</div> <!-- 0 -->
+        <div *ngIf=" 22 <= sensorData.geolocation.heading && sensorData.geolocation.heading < 67">北東</div> <!-- 45 -->
+        <div *ngIf=" 67 <= sensorData.geolocation.heading && sensorData.geolocation.heading < 112">東</div> <!-- 90 -->
+        <div *ngIf="112 <= sensorData.geolocation.heading && sensorData.geolocation.heading < 157">南東</div> <!-- 135 -->
+        <div *ngIf="157 <= sensorData.geolocation.heading && sensorData.geolocation.heading < 202">南</div> <!-- 180 -->
+        <div *ngIf="202 <= sensorData.geolocation.heading && sensorData.geolocation.heading < 247">南西</div> <!-- 225 -->
+        <div *ngIf="247 <= sensorData.geolocation.heading && sensorData.geolocation.heading < 292">西</div> <!-- 270 -->
+        <div *ngIf="292 <= sensorData.geolocation.heading && sensorData.geolocation.heading < 337">北西</div> <!-- 315 -->
+        <div *ngIf="337 <= sensorData.geolocation.heading && sensorData.geolocation.heading < 360">北</div> <!-- 0 -->
+      </ion-col>
+    </ion-row>
+    <ion-row class="col_right" *ngIf="scoreLogic !== undefined && sensorData !== undefined">
+      <ion-col size="3" class="resultText"><div *ngIf="label1 != ''">{{label1}}: {{scoreLogic.score1.toFixed(2)}}</div></ion-col>
+      <ion-col size="5">acceleration.accelerationIncludingGravity.x/y/z</ion-col>
+      <ion-col size="1">{{sensorData.acceleration.accelerationIncludingGravity.x.toFixed(1)}}</ion-col>
+      <ion-col size="1">{{sensorData.acceleration.accelerationIncludingGravity.y.toFixed(1)}}</ion-col>
+      <ion-col size="1">{{sensorData.acceleration.accelerationIncludingGravity.z.toFixed(1)}}</ion-col>
+    </ion-row>
+    <ion-row class="col_right" *ngIf="scoreLogic !== undefined && sensorData !== undefined">
+      <ion-col size="3" class="resultText"><div *ngIf="label2 != ''">{{label2}}: {{scoreLogic.score2.toFixed(2)}}</div></ion-col>
+      <ion-col size="5">acceleration.beta/gamma/alpha</ion-col>
+      <ion-col size="1">{{sensorData.acceleration.rotationRate.beta.toFixed(1)}}</ion-col>
+      <ion-col size="1">{{sensorData.acceleration.rotationRate.gamma.toFixed(1)}}</ion-col>
+      <ion-col size="1">{{sensorData.acceleration.rotationRate.alpha.toFixed(1)}}</ion-col>
+    </ion-row>
+    <ion-row class="col_right" *ngIf="scoreLogic !== undefined && sensorData !== undefined">
+      <ion-col size="3" class="resultText"><div *ngIf="label3 != ''">{{label3}}: {{scoreLogic.score3.toFixed(2)}}</div></ion-col>
+      <ion-col size="5">gyroscope.beta/gamma/alpha</ion-col>
+      <ion-col size="1">{{sensorData.gyroscope.beta.toFixed(1)}}</ion-col>
+      <ion-col size="1">{{sensorData.gyroscope.gamma.toFixed(1)}}</ion-col>
+      <ion-col size="1">{{sensorData.gyroscope.alpha.toFixed(1)}}</ion-col>
+    </ion-row>
+    <ion-row class="col_right" *ngIf="scoreLogic !== undefined && sensorData !== undefined">
+      <ion-col size="3" class="resultText"><div *ngIf="label4 != ''">{{label4}}: {{scoreLogic.score4.toFixed(2)}}</div></ion-col>
+      <ion-col size="5">magnetometer.x/y/z</ion-col>
+      <ion-col size="1">{{sensorData.magnetometer.x.toFixed(1)}}</ion-col>
+      <ion-col size="1">{{sensorData.magnetometer.y.toFixed(1)}}</ion-col>
+      <ion-col size="1">{{sensorData.magnetometer.z.toFixed(1)}}</ion-col>
+    </ion-row>
+  </ion-grid>
+
+  <ion-grid class="score_logic_range" *ngIf="!hasAndroid">
+    <ion-row>
+      <ion-col>
+        {{sensorLogCounterText}}
+      </ion-col>
+    </ion-row>
+    <ion-row>
+      <ion-col>
+        <ion-range class="range" value="{{rangeValue}}" aria-label="Volume"
+                   [pin]="true" [pinFormatter]="pinFormatter" [min]="rangeMin" [max]="rangeMax"
+                   [disabled]="!scoreLogicRunning"
+                   (ionKnobMoveStart)="onRangeMoveStart($event)"
+                   (ionKnobMoveEnd)="onRangeMoveEnd($event)">
+          <div slot="start">
+            <ion-icon class="control" name="pause-circle-outline" *ngIf="!sensorTimerPause" (click)="onScoreLogicPause()"></ion-icon>
+            <ion-icon class="control" name="caret-forward-circle-outline" *ngIf="sensorTimerPause" (click)="onScoreLogicStart()"></ion-icon>
+          </div>
+          <div slot="end">{{rangeMaxText}}</div>
+        </ion-range>
+      </ion-col>
+    </ion-row>
+  </ion-grid>
+
+  <ion-grid class="score_logic_sensor" *ngIf="!hasAndroid">
+    <ion-row>
+      <ion-col class="score_logic_sensor video_area">
+        <div>
+          【運転動画】
+        </div>
+        <div>
+          <video class="video" #videoElement id="videoElement" playsinline controlslist="nodownload"></video>
+        </div>
+      </ion-col>
+      <ion-col class="canvas_area left">
+        <div>
+          【センサーグラフ】
+        </div>
+        <div class="canvas">
+          <canvas class="canvas" #lineCanvas1 id="lineCanvas1"></canvas>
+        </div>
+      </ion-col>
+    </ion-row>
+    <ion-row class="range_input_area">
+      <ion-col></ion-col>
+      <ion-col size="1" class="right">軸1</ion-col>
+      <ion-col size="1">
+        <ion-input class="range_input" type="number" placeholder="-" [(ngModel)]="range1Min" (change)="onChangeRange()">Range1 min</ion-input>
+      </ion-col>
+      <ion-col size="1">
+        <ion-input class="range_input" type="number" placeholder="-" [(ngModel)]="range1Max" (change)="onChangeRange()">Range1 max</ion-input>
+      </ion-col>
+      <ion-col size="1" class="right">軸2</ion-col>
+      <ion-col size="1">
+        <ion-input class="range_input" type="number" placeholder="-" [(ngModel)]="range2Min" (change)="onChangeRange()">Range2 min</ion-input>
+      </ion-col>
+      <ion-col size="1">
+        <ion-input class="range_input" type="number" placeholder="-" [(ngModel)]="range2Max" (change)="onChangeRange()">Range2 max</ion-input>
+      </ion-col>
+    </ion-row>
+  </ion-grid>
+
+  <ion-grid class="score_logic_sensor_checkbox_area" *ngIf="!hasAndroid"><ion-row><ion-col>
+
+    <ion-grid class="score_logic_sensor_checkbox_title">
+      <ion-row>
+        <ion-col>
+          <input type="checkbox" (click)="changeChecked('showAllCheckBox', 'check1')"  [(ngModel)]="graphData['showAllCheckBox']['check1']">
+          センサーグラフの表示を変更
+        </ion-col>
+      </ion-row>
+    </ion-grid>
+
+    <ion-grid clas="score_logic_sensor_checkbox_row" *ngIf="graphData['showAllCheckBox']['check1']">
+      <ion-row>
+        <ion-col class="right">運転診断スコア</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('scoreAll', 'check1')" [(ngModel)]="graphData['scoreAll']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('scoreAll', 'check2')" [(ngModel)]="graphData['scoreAll']['check2']">
+          <ion-label [style.color]="COLORS['scoreAll']"> {{labelScoreAll}}</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <div *ngIf="label1 != ''">
+            <input type="checkbox" (click)="changeChecked('score1', 'check1')" [(ngModel)]="graphData['score1']['check1']">&nbsp;
+            <input type="checkbox" (click)="changeChecked('score1', 'check2')" [(ngModel)]="graphData['score1']['check2']">
+            <ion-label [style.color]="COLORS['score1']"> {{label1}}</ion-label>
+          </div>
+        </ion-col>
+        <ion-col class="left">
+          <div *ngIf="label2 != ''">
+            <input type="checkbox" (click)="changeChecked('score2', 'check1')" [(ngModel)]="graphData['score2']['check1']">&nbsp;
+            <input type="checkbox" (click)="changeChecked('score2', 'check2')" [(ngModel)]="graphData['score2']['check2']">
+            <ion-label [style.color]="COLORS['score2']"> {{label2}}</ion-label>
+          </div>
+        </ion-col>
+      </ion-row>
+      <ion-row *ngIf="label3 != '' || label4 != ''">
+        <ion-col class="right"></ion-col>
+        <ion-col class="left">
+          <div *ngIf="label3 != ''">
+            <input type="checkbox" (click)="changeChecked('score3', 'check1')" [(ngModel)]="graphData['score3']['check1']">&nbsp;
+            <input type="checkbox" (click)="changeChecked('score3', 'check2')" [(ngModel)]="graphData['score3']['check2']">
+            <ion-label [style.color]="COLORS['score3']"> {{label3}}</ion-label>
+          </div>
+        </ion-col>
+        <ion-col class="left">
+          <div *ngIf="label4 != ''">
+            <input type="checkbox" (click)="changeChecked('score4', 'check1')" [(ngModel)]="graphData['score4']['check1']">&nbsp;
+            <input type="checkbox" (click)="changeChecked('score4', 'check2')" [(ngModel)]="graphData['score4']['check2']">
+            <ion-label [style.color]="COLORS['score4']"> {{label4}}</ion-label>
+          </div>
+        </ion-col>
+        <ion-col></ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right">能力指標スコア</ion-col>
+        <ion-col class="left">
+          <div *ngIf="labelA != ''">
+            <input type="checkbox" (click)="changeChecked('scoreA', 'check1')" [(ngModel)]="graphData['scoreA']['check1']">&nbsp;
+            <input type="checkbox" (click)="changeChecked('scoreA', 'check2')" [(ngModel)]="graphData['scoreA']['check2']">
+            <ion-label [style.color]="COLORS['scoreA']"> {{labelA}}</ion-label>
+          </div>
+        </ion-col>
+        <ion-col class="left">
+          <div *ngIf="labelB != ''">
+            <input type="checkbox" (click)="changeChecked('scoreB', 'check1')" [(ngModel)]="graphData['scoreB']['check1']">&nbsp;
+            <input type="checkbox" (click)="changeChecked('scoreB', 'check2')" [(ngModel)]="graphData['scoreB']['check2']">
+            <ion-label [style.color]="COLORS['scoreB']"> {{labelB}}</ion-label>
+          </div>
+        </ion-col>
+        <ion-col class="left">
+          <div *ngIf="labelC != ''">
+            <input type="checkbox" (click)="changeChecked('scoreC', 'check1')" [(ngModel)]="graphData['scoreC']['check1']">&nbsp;
+            <input type="checkbox" (click)="changeChecked('scoreC', 'check2')" [(ngModel)]="graphData['scoreC']['check2']">
+            <ion-label [style.color]="COLORS['scoreC']"> {{labelC}}</ion-label>
+          </div>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right">運転診断スコアロジック</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('scoreLogic', 'check1')" [(ngModel)]="graphData['scoreLogic']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('scoreLogic', 'check2')" [(ngModel)]="graphData['scoreLogic']['check2']">
+          <ion-label> drawGraphで出力した値</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('hiyari', 'check1')" [(ngModel)]="graphData['hiyari']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('hiyari', 'check2')" [(ngModel)]="graphData['hiyari']['check2']">
+          <ion-label [style.color]="COLORS['hiyari']"> ヒヤリ地点</ion-label>
+        </ion-col>
+        <ion-col></ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right">geolocation</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('geolocation.speed', 'check1')" [(ngModel)]="graphData['geolocation.speed']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('geolocation.speed', 'check2')" [(ngModel)]="graphData['geolocation.speed']['check2']">
+          <ion-label [style.color]="COLORS['geolocation']"> geolocation.speed</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('geolocation.heading', 'check1')" [(ngModel)]="graphData['geolocation.heading']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('geolocation.heading', 'check2')" [(ngModel)]="graphData['geolocation.heading']['check2']">
+          <ion-label [style.color]="COLORS['geolocation']"> geolocation.heading</ion-label>
+        </ion-col>
+        <ion-col></ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right">acceleration</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('acceleration.gravity.x', 'check1')" [(ngModel)]="graphData['acceleration.gravity.x']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('acceleration.gravity.x', 'check2')" [(ngModel)]="graphData['acceleration.gravity.x']['check2']">
+          <ion-label [style.color]="COLORS['acceleration']"> accelerationIncludingGravity.x</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('acceleration.gravity.y', 'check1')" [(ngModel)]="graphData['acceleration.gravity.y']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('acceleration.gravity.y', 'check2')" [(ngModel)]="graphData['acceleration.gravity.y']['check2']">
+          <ion-label [style.color]="COLORS['acceleration']"> accelerationIncludingGravity.y</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('acceleration.gravity.z', 'check1')" [(ngModel)]="graphData['acceleration.gravity.z']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('acceleration.gravity.z', 'check2')" [(ngModel)]="graphData['acceleration.gravity.z']['check2']">
+          <ion-label [style.color]="COLORS['acceleration']"> accelerationIncludingGravity.z</ion-label>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col></ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('acceleration.beta', 'check1')" [(ngModel)]="graphData['acceleration.beta']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('acceleration.beta', 'check2')" [(ngModel)]="graphData['acceleration.beta']['check2']">
+          <ion-label [style.color]="COLORS['acceleration']"> acceleration.beta</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('acceleration.gamma', 'check1')" [(ngModel)]="graphData['acceleration.gamma']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('acceleration.gamma', 'check2')" [(ngModel)]="graphData['acceleration.gamma']['check2']">
+          <ion-label [style.color]="COLORS['acceleration']"> acceleration.gamma</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('acceleration.alpha', 'check1')" [(ngModel)]="graphData['acceleration.alpha']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('acceleration.alpha', 'check2')" [(ngModel)]="graphData['acceleration.alpha']['check2']">
+          <ion-label [style.color]="COLORS['acceleration']"> acceleration.alpha</ion-label>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right">LowPass acceleration</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('accelerationLowPass.gravity.x', 'check1')" [(ngModel)]="graphData['accelerationLowPass.gravity.x']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('accelerationLowPass.gravity.x', 'check2')" [(ngModel)]="graphData['accelerationLowPass.gravity.x']['check2']">
+          <ion-label [style.color]="COLORS['accelerationLowPass']"> accelerationIncludingGravity.x</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('accelerationLowPass.gravity.y', 'check1')" [(ngModel)]="graphData['accelerationLowPass.gravity.y']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('accelerationLowPass.gravity.y', 'check2')" [(ngModel)]="graphData['accelerationLowPass.gravity.y']['check2']">
+          <ion-label [style.color]="COLORS['accelerationLowPass']"> accelerationIncludingGravity.y</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('accelerationLowPass.gravity.z', 'check1')" [(ngModel)]="graphData['accelerationLowPass.gravity.z']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('accelerationLowPass.gravity.z', 'check2')" [(ngModel)]="graphData['accelerationLowPass.gravity.z']['check2']">
+          <ion-label [style.color]="COLORS['accelerationLowPass']"> accelerationIncludingGravity.z</ion-label>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right">gyroscope</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('gyroscope.beta', 'check1')" [(ngModel)]="graphData['gyroscope.beta']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('gyroscope.beta', 'check2')" [(ngModel)]="graphData['gyroscope.beta']['check2']">
+          <ion-label [style.color]="COLORS['gyroscope']"> gyroscope.beta</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('gyroscope.gamma', 'check1')" [(ngModel)]="graphData['gyroscope.gamma']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('gyroscope.gamma', 'check2')" [(ngModel)]="graphData['gyroscope.gamma']['check2']">
+          <ion-label [style.color]="COLORS['gyroscope']"> gyroscope.gamma</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('gyroscope.alpha', 'check1')" [(ngModel)]="graphData['gyroscope.alpha']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('gyroscope.alpha', 'check2')" [(ngModel)]="graphData['gyroscope.alpha']['check2']">
+          <ion-label [style.color]="COLORS['gyroscope']"> gyroscope.alpha</ion-label>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right">magnetometer</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('magnetometer.x', 'check1')" [(ngModel)]="graphData['magnetometer.x']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('magnetometer.x', 'check2')" [(ngModel)]="graphData['magnetometer.x']['check2']">
+          <ion-label [style.color]="COLORS['magnetometer']"> magnetometer.x</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('magnetometer.y', 'check1')" [(ngModel)]="graphData['magnetometer.y']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('magnetometer.y', 'check2')" [(ngModel)]="graphData['magnetometer.y']['check2']">
+          <ion-label [style.color]="COLORS['magnetometer']"> magnetometer.y</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('magnetometer.z', 'check1')" [(ngModel)]="graphData['magnetometer.z']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('magnetometer.z', 'check2')" [(ngModel)]="graphData['magnetometer.z']['check2']">
+          <ion-label [style.color]="COLORS['magnetometer']"> magnetometer.z</ion-label>
+        </ion-col>
+      </ion-row>
+      <!--車載CAN-->
+      <ion-row>
+        <ion-col class="right">車載CAN</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.vehicleSpeed', 'check1')" [(ngModel)]="graphData['canData.vehicleSpeed']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.vehicleSpeed', 'check2')" [(ngModel)]="graphData['canData.vehicleSpeed']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> vehicleSpeed</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.longAcc', 'check1')" [(ngModel)]="graphData['canData.longAcc']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.longAcc', 'check2')" [(ngModel)]="graphData['canData.longAcc']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> longAcc</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.latAcc', 'check1')" [(ngModel)]="graphData['canData.latAcc']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.latAcc', 'check2')" [(ngModel)]="graphData['canData.latAcc']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> latAcc</ion-label>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right"></ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.frontDistance', 'check1')" [(ngModel)]="graphData['canData.frontDistance']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.frontDistance', 'check2')" [(ngModel)]="graphData['canData.frontDistance']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> frontDistance</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.lateralDistance', 'check1')" [(ngModel)]="graphData['canData.lateralDistance']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.lateralDistance', 'check2')" [(ngModel)]="graphData['canData.lateralDistance']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> lateralDistance</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.steeringAngle', 'check1')" [(ngModel)]="graphData['canData.steeringAngle']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.steeringAngle', 'check2')" [(ngModel)]="graphData['canData.steeringAngle']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> steeringAngle</ion-label>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right"></ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.accelPedalPosition', 'check1')" [(ngModel)]="graphData['canData.accelPedalPosition']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.accelPedalPosition', 'check2')" [(ngModel)]="graphData['canData.accelPedalPosition']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> accelPedalPosition</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.brakePressure', 'check1')" [(ngModel)]="graphData['canData.brakePressure']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.brakePressure', 'check2')" [(ngModel)]="graphData['canData.brakePressure']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> brakePressure</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.brakeSwitch', 'check1')" [(ngModel)]="graphData['canData.brakeSwitch']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.brakeSwitch', 'check2')" [(ngModel)]="graphData['canData.brakeSwitch']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> brakeSwitch</ion-label>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right"></ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.shiftIndication', 'check1')" [(ngModel)]="graphData['canData.shiftIndication']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.shiftIndication', 'check2')" [(ngModel)]="graphData['canData.shiftIndication']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> shiftIndication</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('canData.turnSignal', 'check1')" [(ngModel)]="graphData['canData.turnSignal']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('canData.turnSignal', 'check2')" [(ngModel)]="graphData['canData.turnSignal']['check2']">
+          <ion-label [style.color]="COLORS['canData']"> turnSignal</ion-label>
+        </ion-col>
+        <ion-col class="left">
+        </ion-col>
+      </ion-row>
+    </ion-grid>
+
+    <ion-grid class="score_logic_sensor_checkbox_title2">
+      <ion-row>
+        <ion-col>
+          <input type="checkbox" (click)="changeChecked('showAllCheckBox', 'check2')"  [(ngModel)]="graphData['showAllCheckBox']['check2']">
+          端末を必ず縦で持った状態に補正したセンサー値
+        </ion-col>
+      </ion-row>
+    </ion-grid>
+
+    <ion-grid clas="score_logic_sensor_checkbox_row" *ngIf="graphData['showAllCheckBox']['check2']">
+      <ion-row >
+        <ion-col class="right">acceleration</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('rotateAcceleration.gravity.x', 'check1')" [(ngModel)]="graphData['rotateAcceleration.gravity.x']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('rotateAcceleration.gravity.x', 'check2')" [(ngModel)]="graphData['rotateAcceleration.gravity.x']['check2']">
+          <ion-label [style.color]="COLORS['rotateAcceleration']"> accelerationIncludingGravity.x</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('rotateAcceleration.gravity.y', 'check1')" [(ngModel)]="graphData['rotateAcceleration.gravity.y']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('rotateAcceleration.gravity.y', 'check2')" [(ngModel)]="graphData['rotateAcceleration.gravity.y']['check2']">
+          <ion-label [style.color]="COLORS['rotateAcceleration']"> accelerationIncludingGravity.y</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('rotateAcceleration.gravity.z', 'check1')" [(ngModel)]="graphData['rotateAcceleration.gravity.z']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('rotateAcceleration.gravity.z', 'check2')" [(ngModel)]="graphData['rotateAcceleration.gravity.z']['check2']">
+          <ion-label [style.color]="COLORS['rotateAcceleration']"> accelerationIncludingGravity.z</ion-label>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right">LowPass acceleration</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('rotateAccelerationLowPass.gravity.x', 'check1')" [(ngModel)]="graphData['rotateAccelerationLowPass.gravity.x']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('rotateAccelerationLowPass.gravity.x', 'check2')" [(ngModel)]="graphData['rotateAccelerationLowPass.gravity.x']['check2']">
+          <ion-label [style.color]="COLORS['rotateAccelerationLowPass']"> accelerationIncludingGravity.x</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('rotateAccelerationLowPass.gravity.y', 'check1')" [(ngModel)]="graphData['rotateAccelerationLowPass.gravity.y']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('rotateAccelerationLowPass.gravity.y', 'check2')" [(ngModel)]="graphData['rotateAccelerationLowPass.gravity.y']['check2']">
+          <ion-label [style.color]="COLORS['rotateAccelerationLowPass']"> accelerationIncludingGravity.y</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('rotateAccelerationLowPass.gravity.z', 'check1')" [(ngModel)]="graphData['rotateAccelerationLowPass.gravity.z']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('rotateAccelerationLowPass.gravity.z', 'check2')" [(ngModel)]="graphData['rotateAccelerationLowPass.gravity.z']['check2']">
+          <ion-label [style.color]="COLORS['rotateAccelerationLowPass']"> accelerationIncludingGravity.z</ion-label>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col class="right">gyroscope</ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('rotateGyroscope.beta', 'check1')" [(ngModel)]="graphData['rotateGyroscope.beta']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('rotateGyroscope.beta', 'check2')" [(ngModel)]="graphData['rotateGyroscope.beta']['check2']">
+          <ion-label [style.color]="COLORS['rotateGyroscope']"> gyroscope.beta</ion-label>
+        </ion-col>
+        <ion-col class="left">
+          <input type="checkbox" (click)="changeChecked('rotateGyroscope.gamma', 'check1')" [(ngModel)]="graphData['rotateGyroscope.gamma']['check1']">&nbsp;
+          <input type="checkbox" (click)="changeChecked('rotateGyroscope.gamma', 'check2')" [(ngModel)]="graphData['rotateGyroscope.gamma']['check2']">
+          <ion-label [style.color]="COLORS['rotateGyroscope']"> gyroscope.gamma</ion-label>
+        </ion-col>
+        <!--<ion-col><input type="checkbox" (click)="changeChecked('rotateGyroscopeAlpha', checkBox.rotateGyroscopeAlpha)" [(ngModel)]="checkBox.rotateGyroscopeAlpha"><ion-label style="color:#479597"> gyroscope.alpha</ion-label></ion-col>-->
+        <ion-col></ion-col>
+      </ion-row>
+    </ion-grid>
+
+  </ion-col></ion-row></ion-grid>
+
+  <ion-grid class="score_logic_message" *ngIf="!hasAndroid">
+    <ion-row>
+      <ion-col class="left">
+        【運転診断メッセージ一覧】
+      </ion-col>
+    </ion-row>
+    <ion-row *ngFor="let data of resultMessages;">
+      <ion-col class="left" *ngIf="data.messageData !== null">
+        <div class="green">
+          <span class="bold">[運転診断結果] </span> {{data.dateText}} <span *ngIf="data.messageData.hiyari"> (ヒヤリ地点)</span>
+        </div>
+        <div *ngIf="data.messageData.initialize['score1']">
+          <span class="bold">{{data.messageData.label['score1']}}</span> score={{data.messageData.score['score1'].toFixed(2)}}<br/>
+          <div class="blue" *ngIf="data.messageData.message['score1-positive'] != null">
+            [positive] {{data.messageData.message['score1-positive']}}
+          </div>
+          <div class="red" *ngIf="data.messageData.message['score1-negative'] != null">
+            [negative] {{data.messageData.message['score1-negative']}}
+          </div>
+          <div class="bold" *ngIf="data.messageData.intersection['score1'] != ''">
+            intersection={{data.messageData.intersection['score1']}}
+          </div>
+        </div>
+        <div *ngIf="data.messageData.initialize['score2']">
+          <span class="bold">{{data.messageData.label['score2']}}</span> score={{data.messageData.score['score2'].toFixed(2)}}<br/>
+          <div class="blue" *ngIf="data.messageData.message['score2-positive'] != null">
+            [positive] {{data.messageData.message['score2-positive']}}
+          </div>
+          <div class="red" *ngIf="data.messageData.message['score2-negative'] != null">
+            [negative] {{data.messageData.message['score2-negative']}}
+          </div>
+          <div class="bold" *ngIf="data.messageData.intersection['score2'] != ''">
+            intersection={{data.messageData.intersection['score2']}}
+          </div>
+        </div>
+      </ion-col>
+      <ion-col class="left" *ngIf="data.capabilityScore.initialize">
+        <span class="green">
+          <span class="bold">[能力指標] </span> {{data.dateText}}<br/>
+        </span>
+        <div *ngIf="-1 < data.capabilityScore.scoreA && labelA !== ''">
+          <span class="bold">{{labelA}}</span> score={{data.capabilityScore.scoreA.toFixed(2)}}<br/>
+          {{data.capabilityScore.scoreAMessage}}
+        </div>
+        <div *ngIf="-1 < data.capabilityScore.scoreB && labelB !== ''">
+          <span class="bold">{{labelB}}</span> score={{data.capabilityScore.scoreB.toFixed(2)}}<br/>
+          {{data.capabilityScore.scoreBMessage}}
+        </div>
+        <div *ngIf="-1 < data.capabilityScore.scoreC && labelC !== ''">
+          <span class="bold">{{labelC}}</span> score={{data.capabilityScore.scoreC.toFixed(2)}}<br/>
+          {{data.capabilityScore.scoreCMessage}}
+        </div>
+      </ion-col>
+
+
+    </ion-row>
+  </ion-grid>
+  <!--
+    </ion-card-content>
+  </ion-card>
+  -->
+
+  <a id="save" style="visibility: hidden;"></a>
+  <input type="file" id="upload_gz_files" style="visibility: hidden;" multiple accept=".gz, .webm"/>
+
+</ion-content>

@@ -1,0 +1,13 @@
+{
+  "run_id": "20260717_143507_0f23e40d",
+  "state": "completed",
+  "current_step": "generating",
+  "completed_steps": [
+    "scanning",
+    "analyzing",
+    "generating"
+  ],
+  "error_message": null,
+  "created_at": "2026-07-17T05:35:07.931785+00:00",
+  "updated_at": "2026-07-17T05:41:20.076798+00:00"
+}

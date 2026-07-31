@@ -1,0 +1,215 @@
+<ion-header>
+  <ion-toolbar>
+    <div class="back">
+      <ion-back-button color="secondary" defaultHref="opening" text=""></ion-back-button>
+    </div>
+    <div class="header_title">運転診断結果</div>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [scrollEvents]="true">
+  <ion-card>
+    <ion-card-content>
+      <div class="font_title">総合評価</div>
+      <!--
+      <div *ngIf="!scoreShowStarArea2" class="center font_over_all_score_text">{{scoreOverAll.toFixed(0)}}点</div>
+      -->
+      <div *ngIf="!scoreShowStarArea2" class="flex">
+        <div class="rank_div"></div>
+        <div class="font_over_all_score_text">{{rankScoreOverAll}}位</div>
+        <div class="rank_div font_over_all_score_text2">&nbsp;(100人中)</div>
+      </div>
+      <div *ngIf="scoreShowStarArea2" class="score_root">
+        <div class="over_all_score"><div class="score_child" style="width:{{(scoreOverAll -  0 < 0 ? 0 : scoreOverAll -  0) * 5}}%">★</div>☆</div>
+        <div class="over_all_score"><div class="score_child" style="width:{{(scoreOverAll - 20 < 0 ? 0 : scoreOverAll - 20) * 5}}%">★</div>☆</div>
+        <div class="over_all_score"><div class="score_child" style="width:{{(scoreOverAll - 40 < 0 ? 0 : scoreOverAll - 40) * 5}}%">★</div>☆</div>
+        <div class="over_all_score"><div class="score_child" style="width:{{(scoreOverAll - 60 < 0 ? 0 : scoreOverAll - 60) * 5}}%">★</div>☆</div>
+        <div class="over_all_score"><div class="score_child" style="width:{{(scoreOverAll - 80 < 0 ? 0 : scoreOverAll - 80) * 5}}%">★</div>☆</div>
+      </div>
+      <div class="over_all_comment">{{msgOverAll}}</div>
+    </ion-card-content>
+  </ion-card>
+
+  <ion-card>
+    <ion-card-header>
+      <div class="font_title">安全運転・点数アップのコツ</div>
+    </ion-card-header>
+    <ion-card-content>
+      <ion-grid>
+
+        <ion-row *ngIf="label1 != ''"><ion-col><div class="line"></div></ion-col></ion-row>
+        <!--短いラベル-->
+        <ion-row *ngIf="label1 != '' && label1.length <= 5">
+          <ion-col size="4"><div class="font_score_title">{{label1}}</div></ion-col>
+          <!--
+          <ion-col *ngIf="!scoreShowStarArea1" size="4"><div class="font_score_text left">{{score1.toFixed(0)}}点</div></ion-col>
+          -->
+          <ion-col *ngIf="!scoreShowStarArea1">
+            <div class="font_score_text left">{{rankScore1}}位<span>（100人中）</span></div>
+          </ion-col>
+          <ion-col *ngIf="scoreShowStarArea1" size="4"><div class="score_root">
+            <div class="score"><div class="score_child" style="width:{{(score1 -  0 < 0 ? 0 : score1 -  0) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score1 - 20 < 0 ? 0 : score1 - 20) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score1 - 40 < 0 ? 0 : score1 - 40) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score1 - 60 < 0 ? 0 : score1 - 60) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score1 - 80 < 0 ? 0 : score1 - 80) * 5}}%">★</div>☆</div>
+          </div></ion-col>
+        </ion-row>
+        <!--長いラベル-->
+        <ion-row *ngIf="label1 != '' && label1.length > 5">
+          <ion-col><div class="font_score_title">{{label1}}</div></ion-col>
+        </ion-row>
+        <ion-row *ngIf="label1 != '' && label1.length > 5">
+          <!--
+          <ion-col *ngIf="!scoreShowStarArea1"><div class="font_score_text center">{{score1.toFixed(0)}}点</div></ion-col>
+          -->
+          <ion-col *ngIf="!scoreShowStarArea1" class="flex">
+            <div class="rank_div"></div>
+            <div class="font_score_text">{{rankScore1}}位</div>
+            <div class="rank_div font_score_text2">&nbsp;(100人中)</div>
+          </ion-col>
+          <ion-col *ngIf="scoreShowStarArea1"><div class="score_root">
+            <div class="score"><div class="score_child" style="width:{{(score1 -  0 < 0 ? 0 : score1 -  0) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score1 - 20 < 0 ? 0 : score1 - 20) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score1 - 40 < 0 ? 0 : score1 - 40) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score1 - 60 < 0 ? 0 : score1 - 60) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score1 - 80 < 0 ? 0 : score1 - 80) * 5}}%">★</div>☆</div>
+          </div></ion-col>
+        </ion-row>
+        <ion-row *ngIf="label1 != ''">
+          <ion-col><div class="comment">{{msg1}}</div></ion-col>
+        </ion-row>
+
+        <ion-row *ngIf="label2 != ''"><ion-col><div class="line"></div></ion-col></ion-row>
+        <!--短いラベル-->
+        <ion-row *ngIf="label2 != '' && label2.length <= 5">
+          <ion-col size="4"><div class="font_score_title">{{label2}}</div></ion-col>
+          <!--
+          <ion-col *ngIf="!scoreShowStarArea1" size="4"><div class="font_score_text left">{{score2.toFixed(0)}}点</div></ion-col>
+          -->
+          <ion-col *ngIf="!scoreShowStarArea1">
+            <div class="font_score_text left">{{rankScore2}}位<span>（100人中）</span></div>
+          </ion-col>
+          <ion-col *ngIf="scoreShowStarArea1" size="4"><div class="score_root">
+            <div class="score"><div class="score_child" style="width:{{(score2 -  0 < 0 ? 0 : score2 -  0) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score2 - 20 < 0 ? 0 : score2 - 20) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score2 - 40 < 0 ? 0 : score2 - 40) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score2 - 60 < 0 ? 0 : score2 - 60) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score2 - 80 < 0 ? 0 : score2 - 80) * 5}}%">★</div>☆</div>
+          </div></ion-col>
+        </ion-row>
+        <!--長いラベル-->
+        <ion-row *ngIf="label2 != '' && label2.length > 5">
+          <ion-col><div class="font_score_title">{{label2}}</div></ion-col>
+        </ion-row>
+        <ion-row *ngIf="label2 != '' && label2.length > 5">
+          <!--
+          <ion-col *ngIf="!scoreShowStarArea1"><div class="font_score_text center">{{score2.toFixed(0)}}点</div></ion-col>
+          -->
+          <ion-col *ngIf="!scoreShowStarArea1" class="flex">
+            <div class="rank_div"></div>
+            <div class="font_score_text">{{rankScore2}}位</div>
+            <div class="rank_div font_score_text2">&nbsp;(100人中)</div>
+          </ion-col>
+          <ion-col *ngIf="scoreShowStarArea1"><div class="score_root">
+            <div class="score"><div class="score_child" style="width:{{(score2 -  0 < 0 ? 0 : score2 -  0) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score2 - 20 < 0 ? 0 : score2 - 20) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score2 - 40 < 0 ? 0 : score2 - 40) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score2 - 60 < 0 ? 0 : score2 - 60) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score2 - 80 < 0 ? 0 : score2 - 80) * 5}}%">★</div>☆</div>
+          </div></ion-col>
+        </ion-row>
+        <ion-row *ngIf="label2 != ''">
+          <ion-col><div class="comment">{{msg2}}</div></ion-col>
+        </ion-row>
+
+        <ion-row *ngIf="label3 != ''"><ion-col><div class="line"></div></ion-col></ion-row>
+        <!--短いラベル-->
+        <ion-row *ngIf="label3 != '' && label3.length <= 5">
+          <ion-col size="4"><div class="font_score_title">{{label3}}</div></ion-col>
+          <!--
+          <ion-col *ngIf="!scoreShowStarArea1" size="4"><div class="font_score_text left">{{score3.toFixed(0)}}点</div></ion-col>
+          -->
+          <ion-col *ngIf="!scoreShowStarArea1">
+            <div class="font_score_text left">{{rankScore3}}位<span>（100人中）</span></div>
+          </ion-col>
+          <ion-col *ngIf="scoreShowStarArea1" size="4"><div class="score_root">
+            <div class="score"><div class="score_child" style="width:{{(score3 -  0 < 0 ? 0 : score3 -  0) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score3 - 20 < 0 ? 0 : score3 - 20) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score3 - 40 < 0 ? 0 : score3 - 40) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score3 - 60 < 0 ? 0 : score3 - 60) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score3 - 80 < 0 ? 0 : score3 - 80) * 5}}%">★</div>☆</div>
+          </div></ion-col>
+        </ion-row>
+        <!--長いラベル-->
+        <ion-row *ngIf="label3 != '' && label3.length > 5">
+          <ion-col><div class="font_score_title">{{label3}}</div></ion-col>
+        </ion-row>
+        <ion-row *ngIf="label3 != '' && label3.length > 5">
+          <!--
+          <ion-col *ngIf="!scoreShowStarArea1"><div class="font_score_text center">{{score3.toFixed(0)}}点</div></ion-col>
+          -->
+          <ion-col *ngIf="!scoreShowStarArea1" class="flex">
+            <div class="rank_div"></div>
+            <div class="font_score_text">{{rankScore3}}位</div>
+            <div class="rank_div font_score_text2">&nbsp;(100人中)</div>
+          </ion-col>
+          <ion-col *ngIf="scoreShowStarArea1"><div class="score_root">
+            <div class="score"><div class="score_child" style="width:{{(score3 -  0 < 0 ? 0 : score3 -  0) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score3 - 20 < 0 ? 0 : score3 - 20) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score3 - 40 < 0 ? 0 : score3 - 40) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score3 - 60 < 0 ? 0 : score3 - 60) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score3 - 80 < 0 ? 0 : score3 - 80) * 5}}%">★</div>☆</div>
+          </div></ion-col>
+        </ion-row>
+        <ion-row *ngIf="label3 != ''">
+          <ion-col><div class="comment">{{msg3}}</div></ion-col>
+        </ion-row>
+
+        <ion-row *ngIf="label4 != ''"><ion-col><div class="line"></div></ion-col></ion-row>
+        <!--短いラベル-->
+        <ion-row *ngIf="label4 != '' && label4.length <= 5">
+          <ion-col size="4"><div class="font_score_title">{{label4}}</div></ion-col>
+          <!--
+          <ion-col *ngIf="!scoreShowStarArea1" size="4"><div class="font_score_text left">{{score4.toFixed(0)}}点</div></ion-col>
+          -->
+          <ion-col *ngIf="!scoreShowStarArea1">
+            <div class="font_score_text left">{{rankScore4}}位<span>（100人中）</span></div>
+          </ion-col>
+          <ion-col *ngIf="scoreShowStarArea1" size="4"><div class="score_root">
+            <div class="score"><div class="score_child" style="width:{{(score4 -  0 < 0 ? 0 : score4 -  0) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score4 - 20 < 0 ? 0 : score4 - 20) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score4 - 40 < 0 ? 0 : score4 - 40) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score4 - 60 < 0 ? 0 : score4 - 60) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score4 - 80 < 0 ? 0 : score4 - 80) * 5}}%">★</div>☆</div>
+          </div></ion-col>
+        </ion-row>
+        <!--長いラベル-->
+        <ion-row *ngIf="label4 != '' && label4.length > 5">
+          <ion-col><div class="font_score_title">{{label4}}</div></ion-col>
+        </ion-row>
+        <ion-row *ngIf="label4 != '' && label4.length > 5">
+          <!--
+          <ion-col *ngIf="!scoreShowStarArea1"><div class="font_score_text center">{{score4.toFixed(0)}}点</div></ion-col>
+          -->
+          <ion-col *ngIf="!scoreShowStarArea1" class="flex">
+            <div class="rank_div"></div>
+            <div class="font_score_text">{{rankScore4}}位</div>
+            <div class="rank_div font_score_text2">&nbsp;(100人中)</div>
+          </ion-col>
+          <ion-col *ngIf="scoreShowStarArea1"><div class="score_root">
+            <div class="score"><div class="score_child" style="width:{{(score4 -  0 < 0 ? 0 : score4 -  0) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score4 - 20 < 0 ? 0 : score4 - 20) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score4 - 40 < 0 ? 0 : score4 - 40) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score4 - 60 < 0 ? 0 : score4 - 60) * 5}}%">★</div>☆</div>
+            <div class="score"><div class="score_child" style="width:{{(score4 - 80 < 0 ? 0 : score4 - 80) * 5}}%">★</div>☆</div>
+          </div></ion-col>
+        </ion-row>
+        <ion-row>
+          <ion-col><div class="comment">{{msg4}}</div></ion-col>
+        </ion-row>
+
+      </ion-grid>
+    </ion-card-content>
+  </ion-card>
+</ion-content>

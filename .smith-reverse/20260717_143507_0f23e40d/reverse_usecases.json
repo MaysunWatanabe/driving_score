@@ -1,0 +1,156 @@
+{
+  "usecases": [
+    {
+      "actor": "運転者(ドライバー)",
+      "trigger": "アプリを起動する",
+      "main_flow": [
+        "ステップ1: OpeningPageがAndroidパーミッション(位置/カメラ/マイク/ストレージ/BLE)を要求する",
+        "ステップ2: 各種サービスを初期化し、assetsのscoreLogicFunction.txtとscoreLogic.jsonをローカルストレージへ初期値として保存(既存値のUnixTime/versionと比較して新しい場合のみ上書き)",
+        "ステップ3: loginKeyのtimestampが3日以内なら自動ログインを実行し、成功時は最後の運転診断のover_allコメントをダイアログ表示",
+        "ステップ4: Google Maps SDKをプリロードして完了"
+      ],
+      "outputs": [
+        "ローカルストレージ初期化",
+        "ログインダイアログ表示"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者(ドライバー)",
+      "trigger": "オープニング画面でログインボタンを押しID/PASSWORDを入力する",
+      "main_flow": [
+        "ステップ1: 入力パスワードをMD5でハッシュ化",
+        "ステップ2: LoginServiceがSQLite usersテーブルを id/hashedPassword で検索",
+        "ステップ3: 該当ユーザーがあれば loginKey(timestamp/userId/hashedPassword)とlastLoginUserIdを保存",
+        "ステップ4: 成功時は最新の運転診断コメントを含むダイアログ、失敗時はエラーダイアログを表示"
+      ],
+      "outputs": [
+        "ローカルストレージloginKey更新",
+        "ログイン状態フラグON"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者(ドライバー)",
+      "trigger": "アカウント作成ボタンから新規アカウントを登録する",
+      "main_flow": [
+        "ステップ1: ID(英数字)/パスワード(記号可)/性別/生年月日/身長/都道府県を入力",
+        "ステップ2: Angular ReactiveFormsでバリデーション、パスワードはMD5化",
+        "ステップ3: LoginService.insert→UserDbService.insertUserでusersテーブルへINSERT",
+        "ステップ4: 成功でopeningへ戻り、失敗ならエラーダイアログ"
+      ],
+      "outputs": [
+        "usersテーブルへの新規レコード"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者(ドライバー)",
+      "trigger": "運転診断画面のスタートボタンで運転診断を開始する",
+      "main_flow": [
+        "ステップ1: 設定によりログ/センサーログ/動画保存ディレクトリを準備しscoreLogic/scoreLogicJsonをファイル保存",
+        "ステップ2: SensorServiceに開始通知し、SensorManagerのキャリブレーションを初期化",
+        "ステップ3: 10ms間隔でGPS/加速度/ジャイロ/磁気/CANの最新値を合成しScoreLogicへ供給",
+        "ステップ4: 設定間隔(既定300ms)ごとにScoreLogicの動的JS関数を実行し、Scoreを生成",
+        "ステップ5: 総合/4指標のスコア平均を再計算してUIに表示、ヒヤリ地点マーカーを地図に描画、走行軌跡と自車位置を更新",
+        "ステップ6: 録画ON時は60秒ごとにmovie.webmを追記保存"
+      ],
+      "outputs": [
+        "リアルタイムスコア表示",
+        "地図上のマーカー",
+        "動画/ログ/センサーログファイル"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者(ドライバー)",
+      "trigger": "運転診断画面のストップボタンを押す、またはセンサー異常が検出される",
+      "main_flow": [
+        "ステップ1: ScoreLogic/SensorService/MediaRecorderを停止",
+        "ステップ2: 全マーカーが収まるスケールに地図をフィット、終了地点マーカーを描画",
+        "ステップ3: ScoreDbServiceでscore/score_history/capability_scoreテーブルへ結果をINSERT",
+        "ステップ4: LoginService.scoreIdに開始タイムスタンプを保存し、終了ダイアログを表示"
+      ],
+      "outputs": [
+        "SQLiteへの診断結果永続化",
+        "終了ダイアログ"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者(ドライバー)",
+      "trigger": "運転診断終了後にスコアパネルをタップしコメントページを開く",
+      "main_flow": [
+        "ステップ1: scoreIdでScoreDbServiceから最新結果を取得",
+        "ステップ2: over_all/score1〜4ごとにpositive(最大)/negative(最小)スコアの代表メッセージを選出",
+        "ステップ3: %COUNT/%INTERSECTIONをそれぞれ発生回数と交差点名で差し替え",
+        "ステップ4: orderOfMessage設定に従いpositive/negativeの表示順序を切替表示"
+      ],
+      "outputs": [
+        "指標別アドバイステキストの表示"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者(ドライバー)",
+      "trigger": "地図上のヒヤリ地点マーカーをタップする",
+      "main_flow": [
+        "ステップ1: 選択マーカーのposをMapServiceに保持",
+        "ステップ2: bad-spotページへ/'@'区切りに変換した動画パスと共に遷移",
+        "ステップ3: マーカー位置に地図を寄せて拡大表示、対応する動画をvideoTime秒からシーク再生",
+        "ステップ4: 前/次ボタンで隣接マーカーへ移動、動画の再生時刻に合わせマーカーの選択も自動更新"
+      ],
+      "outputs": [
+        "地図拡大表示",
+        "動画シーク再生",
+        "指標別コメントの表示"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者(ドライバー)",
+      "trigger": "履歴ボタンから運転診断履歴を確認する",
+      "main_flow": [
+        "ステップ1: ScoreDbServiceで全診断結果(SQLiteから)またはダミーデータを取得(最大30件)",
+        "ステップ2: 総合スコア/4指標をChart.jsで折れ線描画、tooltipにpositive/negative発生回数を表示",
+        "ステップ3: 能力指標タブでscoreA/B/Cを日付順に折れ線描画し、過去N日(既定30日)の平均を総合値としてサマリ表示",
+        "ステップ4: グラフ点をhoverすると該当日の詳細サブグラフを別キャンバスに描画"
+      ],
+      "outputs": [
+        "時系列グラフ表示",
+        "指標別コメント表示"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "検証担当者/開発者",
+      "trigger": "設定ページからスコアロジック/設定JSONを差し替える",
+      "main_flow": [
+        "ステップ1: 更新ボタンからファイル選択、選択したファイルはXMLHttpRequestで読み込み",
+        "ステップ2: JSONはsettings/messagesキーの存在検証、スコアロジックはScoreLogic.testScoreLogicで代表センサーデータを流して例外なく実行できるかを検証",
+        "ステップ3: 検証OKなら1行目のUnixTimeを更新してローカルストレージへ保存し、LoginService.initializeで反映",
+        "ステップ4: 失敗時はエラースタックをダイアログで通知"
+      ],
+      "outputs": [
+        "scoreLogic/scoreLogicJsonの更新",
+        "更新完了ダイアログ"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "検証担当者/開発者",
+      "trigger": "編集ページでセンサーログをアップロードしスコアロジックを再実行検証する",
+      "main_flow": [
+        "ステップ1: 複数のgzファイルと動画をブラウザからアップロードしDemoDataに登録",
+        "ステップ2: 実行ボタンで10ms間隔でDemoDataから疑似センサーを流し、ScoreLogicを実行",
+        "ステップ3: Chart.jsでGPS/加速度/ジャイロ/磁気/CAN/スコア/能力指標/ヒヤリを多系列描画し、Y1/Y2軸レンジと系列表示を対話的に操作",
+        "ステップ4: 保存ボタンで検証済みロジックのタイムスタンプ行を更新してストレージ保存、ブラウザでは同時にファイルダウンロード"
+      ],
+      "outputs": [
+        "グラフによる可視化",
+        "スコアロジックファイル更新/ダウンロード"
+      ],
+      "confidence": "high"
+    }
+  ]
+}

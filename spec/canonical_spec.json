@@ -1,0 +1,566 @@
+{
+  "nodes": {
+    "env.app.bootstrap": {
+      "domain": "env",
+      "owned_by": "Env-agent",
+      "entrypoint": "spec/env/app-bootstrap.md"
+    },
+    "env.config.environment": {
+      "domain": "env",
+      "owned_by": "Env-agent",
+      "entrypoint": "spec/env/config-environment.md"
+    },
+    "env.config.capacitor": {
+      "domain": "env",
+      "owned_by": "Env-agent",
+      "entrypoint": "spec/env/config-capacitor.md"
+    },
+    "env.build.installer": {
+      "domain": "env",
+      "owned_by": "Env-agent",
+      "entrypoint": "spec/env/build-installer.md"
+    },
+    "ui.opening.page": {
+      "domain": "ui",
+      "owned_by": "UI-agent",
+      "entrypoint": "spec/ui/opening-page.md"
+    },
+    "ui.account.page": {
+      "domain": "ui",
+      "owned_by": "UI-agent",
+      "entrypoint": "spec/ui/account-page.md"
+    },
+    "ui.driving.page": {
+      "domain": "ui",
+      "owned_by": "UI-agent",
+      "entrypoint": "spec/ui/driving-page.md"
+    },
+    "ui.history.page": {
+      "domain": "ui",
+      "owned_by": "UI-agent",
+      "entrypoint": "spec/ui/history-page.md"
+    },
+    "ui.settings.page": {
+      "domain": "ui",
+      "owned_by": "UI-agent",
+      "entrypoint": "spec/ui/settings-page.md"
+    },
+    "ui.edit.page": {
+      "domain": "ui",
+      "owned_by": "UI-agent",
+      "entrypoint": "spec/ui/edit-page.md"
+    },
+    "ui.badspot.page": {
+      "domain": "ui",
+      "owned_by": "UI-agent",
+      "entrypoint": "spec/ui/badspot-page.md"
+    },
+    "ui.comment.page": {
+      "domain": "ui",
+      "owned_by": "UI-agent",
+      "entrypoint": "spec/ui/comment-page.md"
+    },
+    "middleware.login.service": {
+      "domain": "middleware",
+      "owned_by": "Middleware-agent",
+      "entrypoint": "spec/middleware/login-service.md"
+    },
+    "middleware.log.service": {
+      "domain": "middleware",
+      "owned_by": "Middleware-agent",
+      "entrypoint": "spec/middleware/log-service.md"
+    },
+    "middleware.map.service": {
+      "domain": "middleware",
+      "owned_by": "Middleware-agent",
+      "entrypoint": "spec/middleware/map-service.md"
+    },
+    "middleware.sensor.service": {
+      "domain": "middleware",
+      "owned_by": "Middleware-agent",
+      "entrypoint": "spec/middleware/sensor-service.md"
+    },
+    "middleware.sensor.manager": {
+      "domain": "middleware",
+      "owned_by": "Middleware-agent",
+      "entrypoint": "spec/middleware/sensor-manager.md"
+    },
+    "middleware.sensor.demoData": {
+      "domain": "middleware",
+      "owned_by": "Middleware-agent",
+      "entrypoint": "spec/middleware/sensor-demoData.md"
+    },
+    "middleware.score.logic": {
+      "domain": "middleware",
+      "owned_by": "Middleware-agent",
+      "entrypoint": "spec/middleware/score-logic.md"
+    },
+    "middleware.score.logicSimple": {
+      "domain": "middleware",
+      "owned_by": "Middleware-agent",
+      "entrypoint": "spec/middleware/score-logicSimple.md"
+    },
+    "middleware.score.logicCan": {
+      "domain": "middleware",
+      "owned_by": "Middleware-agent",
+      "entrypoint": "spec/middleware/score-logicCan.md"
+    },
+    "db.user.model": {
+      "domain": "db",
+      "owned_by": "DB-agent",
+      "entrypoint": "spec/db/user-model.md"
+    },
+    "db.user.repository": {
+      "domain": "db",
+      "owned_by": "DB-agent",
+      "entrypoint": "spec/db/user-repository.md"
+    },
+    "db.score.model": {
+      "domain": "db",
+      "owned_by": "DB-agent",
+      "entrypoint": "spec/db/score-model.md"
+    },
+    "db.score.repository": {
+      "domain": "db",
+      "owned_by": "DB-agent",
+      "entrypoint": "spec/db/score-repository.md"
+    },
+    "infra.ble.device": {
+      "domain": "infra",
+      "owned_by": "Infra-agent",
+      "entrypoint": "spec/infra/ble-device.md"
+    },
+    "infra.bluetooth.le": {
+      "domain": "infra",
+      "owned_by": "Infra-agent",
+      "entrypoint": "spec/infra/bluetooth-le.md"
+    },
+    "infra.google.maps": {
+      "domain": "infra",
+      "owned_by": "Infra-agent",
+      "entrypoint": "spec/infra/google-maps.md"
+    },
+    "infra.file.storage": {
+      "domain": "infra",
+      "owned_by": "Infra-agent",
+      "entrypoint": "spec/infra/file-storage.md"
+    },
+    "infra.cordova.sensors": {
+      "domain": "infra",
+      "owned_by": "Infra-agent",
+      "entrypoint": "spec/infra/cordova-sensors.md"
+    },
+    "infra.assets.scoreLogicJson": {
+      "domain": "infra",
+      "owned_by": "Infra-agent",
+      "entrypoint": "spec/infra/assets-scoreLogicJson.md"
+    },
+    "infra.assets.geolocation": {
+      "domain": "infra",
+      "owned_by": "Infra-agent",
+      "entrypoint": "spec/infra/assets-geolocation.md"
+    }
+  },
+  "edges": [
+    {
+      "from": "env.app.bootstrap",
+      "to": "ui.opening.page",
+      "relation": "calls"
+    },
+    {
+      "from": "env.app.bootstrap",
+      "to": "ui.account.page",
+      "relation": "calls"
+    },
+    {
+      "from": "env.app.bootstrap",
+      "to": "ui.driving.page",
+      "relation": "calls"
+    },
+    {
+      "from": "env.app.bootstrap",
+      "to": "ui.history.page",
+      "relation": "calls"
+    },
+    {
+      "from": "env.app.bootstrap",
+      "to": "ui.settings.page",
+      "relation": "calls"
+    },
+    {
+      "from": "env.app.bootstrap",
+      "to": "ui.edit.page",
+      "relation": "calls"
+    },
+    {
+      "from": "env.app.bootstrap",
+      "to": "ui.comment.page",
+      "relation": "calls"
+    },
+    {
+      "from": "env.app.bootstrap",
+      "to": "ui.badspot.page",
+      "relation": "calls"
+    },
+    {
+      "from": "env.app.bootstrap",
+      "to": "infra.cordova.sensors",
+      "relation": "depends_on"
+    },
+    {
+      "from": "env.app.bootstrap",
+      "to": "env.config.environment",
+      "relation": "reads"
+    },
+    {
+      "from": "ui.opening.page",
+      "to": "middleware.login.service",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.opening.page",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.opening.page",
+      "to": "middleware.map.service",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.opening.page",
+      "to": "db.score.repository",
+      "relation": "reads"
+    },
+    {
+      "from": "ui.opening.page",
+      "to": "infra.assets.scoreLogicJson",
+      "relation": "reads"
+    },
+    {
+      "from": "ui.opening.page",
+      "to": "ui.driving.page",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.opening.page",
+      "to": "ui.account.page",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.opening.page",
+      "to": "ui.settings.page",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.account.page",
+      "to": "middleware.login.service",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.account.page",
+      "to": "db.score.repository",
+      "relation": "writes"
+    },
+    {
+      "from": "ui.account.page",
+      "to": "db.user.model",
+      "relation": "writes"
+    },
+    {
+      "from": "ui.account.page",
+      "to": "ui.opening.page",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.driving.page",
+      "to": "middleware.sensor.service",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.driving.page",
+      "to": "middleware.map.service",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.driving.page",
+      "to": "middleware.login.service",
+      "relation": "reads"
+    },
+    {
+      "from": "ui.driving.page",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.driving.page",
+      "to": "middleware.score.logic",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.driving.page",
+      "to": "middleware.sensor.demoData",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.driving.page",
+      "to": "db.score.repository",
+      "relation": "writes"
+    },
+    {
+      "from": "ui.driving.page",
+      "to": "infra.file.storage",
+      "relation": "writes"
+    },
+    {
+      "from": "ui.driving.page",
+      "to": "ui.badspot.page",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.history.page",
+      "to": "db.score.repository",
+      "relation": "reads"
+    },
+    {
+      "from": "ui.history.page",
+      "to": "middleware.login.service",
+      "relation": "reads"
+    },
+    {
+      "from": "ui.settings.page",
+      "to": "middleware.login.service",
+      "relation": "writes"
+    },
+    {
+      "from": "ui.settings.page",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.settings.page",
+      "to": "middleware.score.logic",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.settings.page",
+      "to": "infra.file.storage",
+      "relation": "writes"
+    },
+    {
+      "from": "ui.settings.page",
+      "to": "ui.edit.page",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.edit.page",
+      "to": "middleware.score.logic",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.edit.page",
+      "to": "middleware.sensor.demoData",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.edit.page",
+      "to": "middleware.sensor.manager",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.edit.page",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.badspot.page",
+      "to": "middleware.map.service",
+      "relation": "calls"
+    },
+    {
+      "from": "ui.badspot.page",
+      "to": "middleware.login.service",
+      "relation": "reads"
+    },
+    {
+      "from": "ui.comment.page",
+      "to": "db.score.repository",
+      "relation": "reads"
+    },
+    {
+      "from": "ui.comment.page",
+      "to": "middleware.login.service",
+      "relation": "reads"
+    },
+    {
+      "from": "middleware.login.service",
+      "to": "db.user.repository",
+      "relation": "calls"
+    },
+    {
+      "from": "middleware.login.service",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "middleware.login.service",
+      "to": "db.user.model",
+      "relation": "reads"
+    },
+    {
+      "from": "middleware.login.service",
+      "to": "infra.assets.scoreLogicJson",
+      "relation": "reads"
+    },
+    {
+      "from": "middleware.log.service",
+      "to": "infra.file.storage",
+      "relation": "writes"
+    },
+    {
+      "from": "middleware.map.service",
+      "to": "infra.google.maps",
+      "relation": "depends_on"
+    },
+    {
+      "from": "middleware.map.service",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "middleware.sensor.service",
+      "to": "infra.ble.device",
+      "relation": "calls"
+    },
+    {
+      "from": "middleware.sensor.service",
+      "to": "middleware.sensor.manager",
+      "relation": "calls"
+    },
+    {
+      "from": "middleware.sensor.service",
+      "to": "middleware.sensor.demoData",
+      "relation": "calls"
+    },
+    {
+      "from": "middleware.sensor.service",
+      "to": "middleware.login.service",
+      "relation": "reads"
+    },
+    {
+      "from": "middleware.sensor.service",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "middleware.sensor.service",
+      "to": "infra.cordova.sensors",
+      "relation": "depends_on"
+    },
+    {
+      "from": "middleware.sensor.service",
+      "to": "infra.assets.geolocation",
+      "relation": "reads"
+    },
+    {
+      "from": "middleware.sensor.manager",
+      "to": "middleware.sensor.service",
+      "relation": "depends_on"
+    },
+    {
+      "from": "middleware.sensor.demoData",
+      "to": "infra.file.storage",
+      "relation": "reads"
+    },
+    {
+      "from": "middleware.sensor.demoData",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "middleware.score.logic",
+      "to": "db.score.model",
+      "relation": "writes"
+    },
+    {
+      "from": "middleware.score.logic",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "middleware.score.logic",
+      "to": "infra.assets.scoreLogicJson",
+      "relation": "reads"
+    },
+    {
+      "from": "middleware.score.logicSimple",
+      "to": "middleware.score.logic",
+      "relation": "depends_on"
+    },
+    {
+      "from": "middleware.score.logicCan",
+      "to": "middleware.score.logic",
+      "relation": "depends_on"
+    },
+    {
+      "from": "middleware.score.logicCan",
+      "to": "infra.ble.device",
+      "relation": "reads"
+    },
+    {
+      "from": "db.user.repository",
+      "to": "db.user.model",
+      "relation": "writes"
+    },
+    {
+      "from": "db.user.repository",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "db.score.repository",
+      "to": "db.score.model",
+      "relation": "writes"
+    },
+    {
+      "from": "db.score.repository",
+      "to": "middleware.login.service",
+      "relation": "reads"
+    },
+    {
+      "from": "db.score.repository",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "infra.ble.device",
+      "to": "infra.bluetooth.le",
+      "relation": "depends_on"
+    },
+    {
+      "from": "infra.ble.device",
+      "to": "middleware.log.service",
+      "relation": "calls"
+    },
+    {
+      "from": "infra.assets.scoreLogicJson",
+      "to": "middleware.score.logic",
+      "relation": "reads"
+    },
+    {
+      "from": "infra.assets.geolocation",
+      "to": "middleware.sensor.service",
+      "relation": "reads"
+    },
+    {
+      "from": "env.config.capacitor",
+      "to": "env.config.environment",
+      "relation": "reads"
+    },
+    {
+      "from": "env.build.installer",
+      "to": "env.config.capacitor",
+      "relation": "depends_on"
+    }
+  ]
+}

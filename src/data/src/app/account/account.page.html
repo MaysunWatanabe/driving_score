@@ -1,0 +1,79 @@
+<ion-header>
+  <ion-toolbar>
+    <div class="back">
+      <ion-back-button color="secondary" defaultHref="opening" text=""></ion-back-button>
+    </div>
+    <div class="header_title">{{pageTitle}}</div>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <form [formGroup]="ionicForm">
+
+    <ion-grid>
+      <ion-row>
+        <ion-col size="4"><div class="title">ID</div></ion-col>
+        <ion-col size="8">
+          <ion-input *ngIf="pageType == 'create'" name="userId" formControlName="userId" placeholder="半角英数字、20文字以内" type="text" value="{{userId}}" maxlength="20"></ion-input>
+          <ion-input *ngIf="pageType != 'create'" type="text" value="{{userId}}" readonly></ion-input>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col size="4"><div class="title">PASSWORD</div></ion-col>
+        <ion-col> <ion-input name="userPassword" formControlName="userPassword" placeholder="半角英数字+記号、上限30文字" type="password" maxlength="30"></ion-input></ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col size="4"><div class="title">性別</div></ion-col>
+        <ion-col size="8">
+          <div clasS="select_item">
+            <ion-select interface="popover" [compareWith]="compareWithFn" name="selectSexId" formControlName="selectSexId" value="{{selectSexId}}">
+              <ion-select-option *ngFor="let sex of sexList" value="{{sex.id}}">{{sex.value}}</ion-select-option>
+            </ion-select>
+          </div>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col size="4"><div class="title">生年月</div></ion-col>
+        <ion-col size="8">
+          <div class="select_root">
+            <div class="select_item">
+              <ion-select interface="popover" [compareWith]="compareWithFn" name="selectBirthdayYear" formControlName="selectBirthdayYear" value="{{selectBirthdayYear}}">
+                <ion-select-option *ngFor="let year of yearList" value="{{year}}">{{year}}</ion-select-option>
+              </ion-select>
+            </div>
+            <div class="select_item">
+              <ion-select interface="popover" [compareWith]="compareWithFn" name="selectBirthdayMonth" formControlName="selectBirthdayMonth" value="{{selectBirthdayMonth}}">
+                <ion-select-option *ngFor="let month of monthList" value="{{month}}">{{month}}</ion-select-option>
+              </ion-select>
+            </div>
+          </div>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col size="4"><div class="title">身長</div></ion-col>
+        <ion-col size="8">
+          <div class="select_item">
+            <ion-input class="height" name="height" formControlName="height" placeholder="半角数字" type="number" value="{{height}}"></ion-input> cm
+          </div>
+        </ion-col>
+      </ion-row>
+      <ion-row>
+        <ion-col size="4"><div class="title">居住地</div></ion-col>
+        <ion-col size="8">
+          <div class="select_item">
+            <ion-select interface="popover" [compareWith]="compareWithFn" name="selectPrefecture" formControlName="selectPrefecture" value="{{selectPrefecture}}">
+              <ion-select-option *ngFor="let prefecture of prefectureList" value="{{prefecture.id}}">{{prefecture.value}}</ion-select-option>
+            </ion-select>
+          </div>
+        </ion-col>
+      </ion-row>
+    </ion-grid>
+
+    <div class="button_div">
+      <div><ion-button *ngIf="pageType == 'create'" color="primary" type="submit" (click)="onCreateAccount()">作成</ion-button></div>
+      <div><ion-button *ngIf="pageType != 'create'" color="primary" type="submit" (click)="onModifyAccount()">更新</ion-button></div>
+      <div><ion-button *ngIf="pageType != 'create'" color="secondary" type="submit" (click)="onDeleteAccount()">アカウント削除</ion-button></div>
+    </div>
+
+  </form>
+</ion-content>

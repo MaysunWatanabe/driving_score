@@ -1,0 +1,799 @@
+{
+  "nodes": [
+    {
+      "node_id": "app.bootstrap.module",
+      "domain": "app",
+      "inferred_from": [
+        "src/data/src/app/app.module.ts",
+        "src/data/src/app/app-routing.module.ts",
+        "src/data/src/main.ts",
+        "src/data/src/app/app.component.ts"
+      ],
+      "confidence": "high",
+      "description": "Ionic/Angular アプリのルートモジュール。IonicStorage・HttpClient を初期化し、ScreenOrientation/Geolocation/DeviceMotion/Magnetometer/SQLite/AndroidPermissions といった Cordova プラグインを DI に登録する。ルータは 8 経路 (opening/account/:type/bad-spot/:path/comment/driving/history/settings/edit) を lazy load で提供し、既定は opening にリダイレクト。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "ui.opening.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.account.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.driving.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.history.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.settings.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.edit.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.comment.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.badspot.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "ui.opening.page",
+      "domain": "ui",
+      "inferred_from": [
+        "src/data/src/app/opening/opening.page.ts",
+        "src/data/src/app/opening/opening.module.ts",
+        "src/data/src/app/opening/opening-routing.module.ts"
+      ],
+      "confidence": "high",
+      "description": "アプリ起点画面。Androidの各種パーミッション(位置/カメラ/マイク/ストレージ/BLE)を初期化時に順次要求し、scoreLogic.txt と scoreLogic.json を assets から取得し先頭コメントの UnixTime または version 比較で新しい場合のみ Storage に上書き保存する。autoLogin (最終ログインから72時間以内)により自動ログイン。ログイン済みなら直近スコアの over_all メッセージ(%COUNT置換済)を表示、未ログインならログイン/新規作成/設定への導線を提示する。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "service.login",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.scoreDb",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.log",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.map",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.driving.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.account.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.settings.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "ui.account.page",
+      "domain": "ui",
+      "inferred_from": [
+        "src/data/src/app/account/account.page.ts",
+        "src/data/src/app/account/account.module.ts"
+      ],
+      "confidence": "high",
+      "description": "アカウントの作成/編集/削除を担う 1 ページ。ルートパラメータ type (create|modify) で挙動を切替。ID(半角英数20文字)/PASSWORD(半角英数記号30文字)/性別/生年月(1900-2020,1-12月)/身長/居住地(47都道府県) をReactive Formsでバリデーション。PASSWORD は Md5.hashStr でハッシュ化して保存。編集時は既存値を初期表示しパスワード欄には ****(4文字の伏字)を表示し変更なしなら現行維持。削除時は user と score の両テーブルをユーザー単位で削除する。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "service.login",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.scoreDb",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "domain.user",
+            "type": "writes"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.opening.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "ui.driving.page",
+      "domain": "ui",
+      "inferred_from": [
+        "src/data/src/app/driving/driving.page.ts",
+        "src/data/src/app/driving/driving.module.ts"
+      ],
+      "confidence": "high",
+      "description": "実走行中のリアルタイム運転診断画面。SensorService から10ms周期でセンサー統合値を受け、ScoreLogic を settings.scoreLogicInterval (既定300ms)で実行し、総合＋4指標のスコアを星または順位(101-score)で表示。Google Map 上に自車位置/開始・終了マーカー/ヒヤリ地点マーカー/走行軌跡を描画。診断中は Insomnia でスリープ抑止・画面向きは自由。MediaRecorder で 60秒チャンクの video/webm を Android の Movies/driving-score 配下に追記保存する。onStop で ScoreDbService.insertScore により走行結果を SQLite に永続化する。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "service.sensor",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.map",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.scoreDb",
+            "type": "writes"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.login",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "domain.scoreLogic",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.badspot.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "ui.history.page",
+      "domain": "ui",
+      "inferred_from": [
+        "src/data/src/app/history/history.page.ts",
+        "src/data/src/app/history/history.module.ts"
+      ],
+      "confidence": "high",
+      "description": "過去の運転診断結果を Chart.js で可視化する画面。ヒストリータブ(総合＋4指標)と能力指標タブ(scoreA=筋力/B=柔軟性/C=視野)を持ち、直近 GRAPH_MAX=30 件を古い順に表示。settings.scoreShowStarArea1/2 に応じて生スコアと順位(101-score)を切替。orderOfMessage でpositive/negativeの表示順を制御。能力指標タブは capabilityScoreTargetDays (既定30日)以内のスコアを平均し、Tooltip ホバーで該当日のサブグラフを表示する。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "service.scoreDb",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.login",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "ui.settings.page",
+      "domain": "ui",
+      "inferred_from": [
+        "src/data/src/app/settings/settings.page.ts"
+      ],
+      "confidence": "high",
+      "description": "アプリ設定画面。録画・GPSデモ・ログ保存/センサーログ保存の各フラグと、センサーモード(smartphoneOnly/canDataOnly/combination)を切替。scoreLogic 本体(JS)と scoreLogicJson(メッセージ辞書)を、端末上のファイルから読み込んで検証(testScoreLogic 実行)後に Storage 更新、または端末外部ストレージ(Documents/driving-score/)へ書き出す。ScoreLogic は /edit へ遷移する『直接編集』も提供。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "service.login",
+            "type": "writes"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.log",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "domain.scoreLogic",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "ui.edit.page",
+            "type": "triggers"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "ui.edit.page",
+      "domain": "ui",
+      "inferred_from": [
+        "src/data/src/app/edit/edit.page.ts"
+      ],
+      "confidence": "high",
+      "description": "開発者・検証用のスコアロジック編集とデモ再生ページ。gz センサログと webm 動画をブラウザからアップロードして DemoData 再生し、テキストエディタで編集した ScoreLogic を testScoreLogic で試験実行できる。Chart.js に GPS/加速度/ジャイロ/磁力/CAN および 4スコア/能力指標/hiyari を GRAPH_SIZE=1200 の固定長で多変量プロット。ロジック保存時は先頭に //<UnixTime> と //<yyyy-MM-dd HH:mm:ss> のヘッダを差し込む(古いロジックへの巻き戻しを防ぐ)。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "domain.scoreLogic",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "domain.demoData",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "domain.sensorManager",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "ui.badspot.page",
+      "domain": "ui",
+      "inferred_from": [
+        "src/data/src/app/bad-spot/bad-spot.page.ts"
+      ],
+      "confidence": "high",
+      "description": "走行後にヒヤリ地点マーカーを 1 点ずつ確認するページ。ルートパラメータ path (@区切り→/復元)から動画パスを取得し、映像を非オートプレイ・ミュートで再生。300ms周期で videoElement.currentTime を監視し、マーカー配列の videoTime を線形走査して現在時刻に対応するヒヤリ地点を自動追尾する。前/次ボタンでヒヤリ地点をリング状に切替、選択マーカーは hiyar_big.png で強調表示。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "service.map",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.login",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "ui.comment.page",
+      "domain": "ui",
+      "inferred_from": [
+        "src/data/src/app/comment/comment.page.ts"
+      ],
+      "confidence": "high",
+      "description": "直近1回の運転診断結果(loginService.scoreId=startTimestamp)の詳細コメント画面。over_all/score1..4 × positive/negative の 5×2 マトリクスで、positive は最高スコア・negative は最低スコアの代表 message を選出し、同一 id の出現回数を %COUNT、交差点名を %INTERSECTION に置換する。scoreShowStarArea1/2 と orderOfMessage 設定でスコアと表示順を制御する。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "service.scoreDb",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.login",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "service.sensor",
+      "domain": "service",
+      "inferred_from": [
+        "src/data/src/app/services/sensor.service.ts"
+      ],
+      "confidence": "high",
+      "description": "GPS/加速度計/ジャイロスコープ/磁力計/BLE(CAN) の統合センサーサービス。Android 実機なら実センサ購読、非実機なら DemoData を再生。10ms周期の sensorTimer で最新値を集約→SensorManager.calibration()で補正→通知コールバックへ渡す。GPS 直近位置は environment.geolocationLastPosKey に保存し、取得失敗時は横浜近辺(35.4636,139.6262)を返す。selectedSensorMode='smartphoneOnly' 時は BLE 接続をスキップ。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "domain.ble",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "domain.sensorManager",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "domain.demoData",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "service.userDb",
+      "domain": "service",
+      "inferred_from": [
+        "src/data/src/app/services/user-db.service.ts"
+      ],
+      "confidence": "high",
+      "description": "SQLite (Cordova版 driving-score.db) の users テーブルへの CRUD サービス。列は user_id/user_password/sex/birth_year/birth_month/height/prefecture。selectUsers/selectUser(id,password)/insertUser(user,ignore)/updateUser(user)/deleteUser(id) を提供。ブラウザ実行時は SQLite を使わず User.dummy() を返す。insertUser の ignore フラグで INSERT or IGNORE を切替可能。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "domain.user",
+            "type": "writes"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.log",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "service.login",
+      "domain": "service",
+      "inferred_from": [
+        "src/data/src/app/services/login.service.ts"
+      ],
+      "confidence": "high",
+      "description": "ログイン状態管理・ユーザーライフサイクル・アプリ設定 (settings) の永続化サービス。login(id,pw) で userDb.selectUser 照合成功時に environment.loginKey へ {timestamp,userId,userPassword} を保存し、autoLogin() はタイムスタンプが 3 日以内なら自動再ログインする(オープニング画面72時間との近似)。scoreLogicJson の settings をパースして orderOfMessage/label{1..4,A..C}/scoreLogicInterval(既定300ms)/capabilityScoreTargetDays(既定30日)/scoreShowStar.area{1,2,3} を保持。ユーザーの insert/update/delete 前には必ず logout() を実行する。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "service.userDb",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.log",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "domain.user",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "service.log",
+      "domain": "service",
+      "inferred_from": [
+        "src/data/src/app/services/log.service.ts"
+      ],
+      "confidence": "high",
+      "description": "アプリのデバッグ/エラーログとセンサーログを蓄積し、Android の Documents/driving-score/(debug-log|指定ディレクトリ)/ に gzip 圧縮して書き出すサービス。debug()/error()/sensor() は console 出力と同時にバッファリングし、通常ログは 3MB, センサーログは 5MB 到達で log.YYYYMMDD-HHMMSS.txt.gz / sensor-log.YYYYMMDD-HHMMSS.txt.gz として書き出す。センサーログは既定パス(saveLogPath == saveDefaultLogPath)では書き込まない。Android 以外では完全 no-op。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "external.file",
+            "type": "writes"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "service.scoreDb",
+      "domain": "service",
+      "inferred_from": [
+        "src/data/src/app/services/score-db.service.ts"
+      ],
+      "confidence": "high",
+      "description": "運転診断結果を SQLite に永続化・参照するサービス。テーブルは score(score_id PK, user_id, score_over_all, score1..4) / score_history(score_id, timestamp, message_id, message_key, message_type, message_text, intersection, score) / capability_score(score_id, timestamp, score_a/b/c と各 message) の 3 種。insertScore は 1 走行分を保存後 1000 レコード刻みで再帰的にバルク INSERT する。selectScore/selectAllScore/selectLastScore は INNER JOIN でスコア詳細と能力スコアを結合し Score.makeDbScore で組み立てる。ブラウザ環境では乱数を用いたダミースコアを生成する。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "domain.score",
+            "type": "writes"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.login",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "service.map",
+      "domain": "service",
+      "inferred_from": [
+        "src/data/src/app/services/map.service.ts"
+      ],
+      "confidence": "high",
+      "description": "Google Maps JavaScript API のロードとマーカー描画・操作を集約するサービス。region=JP/language=ja で一度だけロード。ヒヤリマーカー(hiyari.png/hiyar_big.png)、走行軌跡の円マーカー(直前との距離<0.0006 度はスキップ・上限1000個)、車両アイコン、S/Eマーカーを管理。ドラッグ/idle で bounds 内マーカーのみ表示切替。fitBounds でマーカー全体に収まるビューへ自動調整。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "external.googleMaps",
+            "type": "depends_on"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.log",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "domain.user",
+      "domain": "domain",
+      "inferred_from": [
+        "src/data/src/app/data/user.ts"
+      ],
+      "confidence": "high",
+      "description": "ユーザー情報の POCO モデル。userId(空文字既定)/userPassword(MD5ハッシュ)/sex/birthYear/birthMonth/height/prefecture を保持。静的 dummy() でブラウザ実行時のフォールバック用固定ユーザ(userId='test', height=185.5, prefecture=12)を返す。",
+      "relations": []
+    },
+    {
+      "node_id": "domain.ble",
+      "domain": "domain",
+      "inferred_from": [
+        "src/data/src/app/data/ble.ts"
+      ],
+      "confidence": "high",
+      "description": "車載機 DrivingCanData との BLE 通信クラス。UUID は SERVICE=0x2310, NOTIFY=0x2311、既定端末 ID D8:3A:DD:6A:A2:15。3 秒スキャンで名前 DrivingCanData の広告を集め、1 台なら自動接続、複数ならラジオボタン付きダイアログで選択、0 台なら失敗ダイアログ表示。connect は 10 秒 timeout で startNotifications により通知を購読し、12バイトの CAN パケット(vehicleSpeed/longAcc/latAcc/frontDistance/lateralDistance/steeringAngle/accelPedalPosition/brakePressure/brakeSwitch/shiftIndication/turnSignal)を固定オフセット/スケールでデコードする。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "external.bluetoothLe",
+            "type": "depends_on"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.log",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "domain.score",
+      "domain": "domain",
+      "inferred_from": [
+        "src/data/src/app/data/score.ts"
+      ],
+      "confidence": "high",
+      "description": "運転診断結果を表す Message/CapabilityScore/Score の 3 モデル。Message は key(over_all/score1..4) と紐づく数値スコアを保持。CapabilityScore は A/B/C(-1 は未設定)スコアと各解説メッセージを持ち、走行内平均を graphCapabilityScoreList に蓄積する。Score は timestamp を PK 相当とし、総合 overAll と 4 指標・ヒヤリフラグ・交差点名・messages 配列・capabilityScore を保持し、JSON/DB/ダミーの 3 経路から復元できる。",
+      "relations": []
+    },
+    {
+      "node_id": "domain.sensorManager",
+      "domain": "domain",
+      "inferred_from": [
+        "src/data/src/app/data/sensor-manager.ts"
+      ],
+      "confidence": "high",
+      "description": "センサーデータのキャリブレーション(姿勢補正)・ローパスフィルタ・回転行列演算の静的ユーティリティ。起動100msスキップの後1000ms分のサンプルを蓄積して Android SensorManager 相当の getRotationMatrix/remapCoordinateSystem/getOrientation で azimuth/pitch/roll を算出しオフセットとして固定する。以降 calibration() 呼び出しの度に加速度/磁力の rotate と accelerationIncludingGravity.lowPass をセンサーデータへ付加する。1 次 IIR ローパス(T=0.0167, F=0.2Hz)を採用。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "service.sensor",
+            "type": "depends_on"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "domain.scoreLogic",
+      "domain": "domain",
+      "inferred_from": [
+        "src/data/src/app/data/score-logic.ts",
+        "src/data/src/assets/data/scoreLogicFunction.txt",
+        "src/data/src/assets/data/scoreLogicFunction_simple.txt",
+        "src/scoreLogicFunction.js"
+      ],
+      "confidence": "high",
+      "description": "運転診断ロジック本体を動的に実行するランナー。Storage(environment.scoreLogicKey) から取得した JavaScript 文字列を new Function で関数化し、(currentTimestamp,lastTimestamp,geo/accel/gyro/mag/canDataList,scoreLogicJson,scoreLogicResultList,localData,log,drawGraph) の署名で呼び出す。scoreLogicInterval(既定300ms) で setInterval し、結果 JSON を Score に変換し scoreList に蓄積、calculator() で over_all/score1..4 の走行内平均を再計算する。pushSensorData でセンサ列にサンプルを追加し、environment.sensorStockTime(60秒) を超える古いサンプルを clearOldData で捨てる。testScoreLogic はブラウザ確認用の固定ダミーセンサでロジックを実行する。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "domain.score",
+            "type": "writes"
+          },
+          "type": "depends_on"
+        },
+        {
+          "target_node_id": {
+            "target_node_id": "service.log",
+            "type": "calls"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "domain.demoData",
+      "domain": "domain",
+      "inferred_from": [
+        "src/data/src/app/data/demo-data.ts"
+      ],
+      "confidence": "high",
+      "description": "実センサーの代替として過去のセンサーログ(gzip+Base64)を再生するシングルトン。pushSensorLogFile で 1 ファイルを取り込み、gzip 解凍→行単位 JSON→sensor プロパティ抽出。getSensorLogData で 1 サンプルずつ返し、末尾で次ファイルを load。seekSensorLogData(videoTime) は各ファイルの min/max videoTime から該当ファイルを選び目的位置まで進める。旧ログ互換のため acceleration.x/y/z や rotationRate.beta/gamma/alpha などのスキーマを変換する。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "external.file",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "domain.scoreLogic.simple",
+      "domain": "domain",
+      "inferred_from": [
+        "src/data/src/assets/data/scoreLogicFunction_simple.txt"
+      ],
+      "confidence": "high",
+      "description": "スマホセンサーのみを用いた減点方式の簡易スコアロジック。localData.negativeScore=100 初期から NEGATIVE_SCORE=8 / NEGATIVE_OVER_ALL_SCORE=10 の幅で減点する。項目別しきい値は アクセル: accel z<=-1.8, ハンドル: |gamma|>=35 で発火(ブレーキ・速度は現状コメントアウト)。同種は NEGATIVE_INTERVAL=10000ms 内は再発火抑止。10秒以内に 2 種以上のnegativeが同時発生すれば hiyari=true とし overAll を追加減点し、20秒 negative がなければ overAll を 100 に戻す。能力指標は 1% 確率の乱数で返すダミー実装。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "domain.scoreLogic",
+            "type": "depends_on"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "domain.scoreLogic.can",
+      "domain": "domain",
+      "inferred_from": [
+        "src/scoreLogicFunction.js"
+      ],
+      "confidence": "high",
+      "description": "車載CAN対応の本番スコアロジック(約885行)。canDataList を前回時刻以降だけ走査し 3 種の判定を行う。(1) parkingAction: shiftIndication の D→R→P 遷移で駐車シーケンスを検出、s1=D中最大減速度・s2=D中最大速度・s3=R中最大加速度を正規分布 normDist(x,mean=0,sd) で係数化し、score1=0.57*S1+0.25*S2+0.18*S3, scoreA=0.6*S1+0.4*S3, scoreB=0.42*S1+0.34*S2+0.24*S3 を算出。(2) midHighSpeedDrive: 車速>=40km/h かつ turnSignal=0 かつ |steeringAngle|<=15° が 10 秒継続すると、過去 3 点の二次テイラー予測との誤差90%タイル α を求め9セル分割でShannonエントロピー Hp を計算し score2=(1-Hp)*100 とする。(3) hiyari: longAcc/latAcc の Jerk をローパス(T=0.05s,F=2Hz)し |Jerk_LPF|>0.4G/s で立てる(1秒抑止)。overAll は有効スコアの平均。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "domain.scoreLogic",
+            "type": "depends_on"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "asset.scoreLogicJson",
+      "domain": "asset",
+      "inferred_from": [
+        "src/data/src/assets/data/scoreLogic.json"
+      ],
+      "confidence": "high",
+      "description": "スコア算出コードから独立して配布される『スコアに紐づくメッセージ辞書＋交差点マスタ』の JSON。version フィールドで世代管理し、settings(label/scoreLogicInterval=300ms/capabilityScoreTargetDays=30/scoreShowStar.area1-3)、intersection(みなとみらい周辺5交差点の緯度経度)、messages(id/key/type/area/score.inclusive_min/exclusive_max/message/custom で構成される文言テーブル、%INTERSECTION と %COUNT のプレースホルダを持つ)を保持する。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "domain.scoreLogic",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "asset.geolocation",
+      "domain": "asset",
+      "inferred_from": [
+        "src/data/src/assets/data/geolocation.json"
+      ],
+      "confidence": "medium",
+      "description": "GPS デモモード用の固定 GPS 経路データ(横浜みなとみらい周辺と推測)。設定 gpsDemo フラグ有効時に SensorService から利用される想定。",
+      "relations": [
+        {
+          "target_node_id": {
+            "target_node_id": "service.sensor",
+            "type": "reads"
+          },
+          "type": "depends_on"
+        }
+      ]
+    },
+    {
+      "node_id": "config.environment",
+      "domain": "config",
+      "inferred_from": [
+        "src/data/src/environments/environment.ts",
+        "src/data/src/environments/environment.prod.ts"
+      ],
+      "confidence": "high",
+      "description": "アプリ全体で共有される設定キー定義。mapsKey(平文の Google Maps API キー)、geolocationMaximumAge/Timeout、sensorStockTime=60000ms、scoreLogicKey/scoreLogicJsonKey(Storage キー分離によりロジックと辞書を独立に上書き可能)、loginKey/lastLoginUserId、setting* 系(recording/gpsDemo/logStorage/sensorLogStorage/selectedSensorMode)を提供する。production フラグのみが本番用との差分。",
+      "relations": []
+    },
+    {
+      "node_id": "config.capacitor",
+      "domain": "config",
+      "inferred_from": [
+        "src/data/capacitor.config.ts",
+        "src/data/ionic.config.json",
+        "src/data/angular.json",
+        "src/data/android/app/src/main/AndroidManifest.xml"
+      ],
+      "confidence": "high",
+      "description": "Capacitor/Ionic/Angular ビルド設定と Android アプリ設定。パッケージは jp.co.nissan.drivingscore、MainActivity は singleTask、requestLegacyExternalStorage=true、AndroidManifest に位置情報/カメラ/マイク/BLE/外部ストレージ等の権限と Google Maps API キーが埋め込まれている。",
+      "relations": []
+    },
+    {
+      "node_id": "build.installer",
+      "domain": "build",
+      "inferred_from": [
+        "src/config-npm.bat",
+        "src/install-windows.bat",
+        "src/install-mac.sh",
+        "src/data/batch/windows/build-android.bat",
+        "src/data/batch/windows/build-browser.bat",
+        "src/data/batch/mac/build-android.sh",
+        "src/data/batch/mac/build-browser.sh"
+      ],
+      "confidence": "high",
+      "description": "社内向けフルオートインストーラ／ビルドバッチ群。config-npm.bat で社内プロキシ(user:pass@proxy:8080)の登録/削除、install-windows.bat/install-mac.sh は java17/adb/node の存在確認→Desktop 配下にコピー→npm install→ionic cap sync→ionic build→npx cap add android→ionic capacitor build android の順で実行し、失敗時は npm registry を http/strict-ssl false にフォールバックする。Windows は mklink /D で android/src シンボリックリンクを作成するため管理者権限が必要。build-android.bat/sh と build-browser.bat/sh は薄いラッパ。",
+      "relations": []
+    },
+    {
+      "node_id": "external.googleMaps",
+      "domain": "external",
+      "inferred_from": [
+        "src/data/src/app/services/map.service.ts",
+        "src/data/src/environments/environment.ts"
+      ],
+      "confidence": "high",
+      "description": "Google Maps JavaScript API(js-api-loader, region=JP/language=ja)。地図表示・マーカー・fitBounds に使用。APIキーは environment.mapsKey と AndroidManifest に平文で埋め込まれている。",
+      "relations": []
+    },
+    {
+      "node_id": "external.bluetoothLe",
+      "domain": "external",
+      "inferred_from": [
+        "src/data/src/app/data/ble.ts",
+        "src/data/package.json"
+      ],
+      "confidence": "high",
+      "description": "@capacitor-community/bluetooth-le を用いた BLE 通信。車載機 DrivingCanData から 100ms 間隔で CAN パケットを受信する。",
+      "relations": []
+    },
+    {
+      "node_id": "external.file",
+      "domain": "external",
+      "inferred_from": [
+        "src/data/src/app/services/log.service.ts",
+        "src/data/src/app/data/demo-data.ts"
+      ],
+      "confidence": "high",
+      "description": "@awesome-cordova-plugins/file による Android 外部ストレージへの読み書き。Documents/driving-score 配下にログや動画、scoreLogic のスナップショットが書き出される。",
+      "relations": []
+    },
+    {
+      "node_id": "external.cordovaSensors",
+      "domain": "external",
+      "inferred_from": [
+        "src/data/src/app/services/sensor.service.ts",
+        "src/data/package.json"
+      ],
+      "confidence": "high",
+      "description": "Cordova/Capacitor による端末センサープラグイン群(@capacitor/geolocation, @capacitor/motion, @awesome-cordova-plugins/device-motion, magnetometer, screen-orientation, insomnia, sqlite, android-permissions)。",
+      "relations": []
+    }
+  ]
+}

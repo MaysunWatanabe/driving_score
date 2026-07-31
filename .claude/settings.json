@@ -1,0 +1,131 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(pip:*)",
+      "Bash(pip3:*)",
+      "Bash(poetry:*)",
+      "Bash(pipenv:*)",
+      "Bash(uv:*)",
+      "Bash(conda:*)",
+
+      "Bash(node:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(yarn:*)",
+      "Bash(pnpm:*)",
+      "Bash(bun:*)",
+
+      "Bash(unittest:*)",
+      "Bash(coverage:*)",
+      "Bash(tox:*)",
+
+      "Bash(ruff:*)",
+      "Bash(black:*)",
+      "Bash(isort:*)",
+      "Bash(mypy:*)",
+      "Bash(flake8:*)",
+
+      "Bash(git commit:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git restore:*)",
+      "Bash(git push origin:*)",
+
+      "Bash(gh:*)",
+
+      "Bash(docker-compose:*)",
+      "Bash(make:*)",
+
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(touch:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(tree:*)",
+
+      "Bash(sqlite3:*)",
+      "Bash(redis-cli:*)",
+
+      "Bash(wget:*)",
+      "WebFetch",
+
+      "Write(*)",
+      "Skill(*)",
+
+      "mcp__projectsmith__push_spec_code_mapping",
+      "mcp__projectsmith__query_spec_mapping",
+      "mcp__projectsmith__find_related_nodes",
+      "mcp__projectsmith__get_node_detail",
+      "mcp__projectsmith__expand_node",
+      "mcp__projectsmith__get_code_refs",
+      "mcp__projectsmith__list_ask_scopes",
+      "mcp__projectsmith__ask_repository",
+      "mcp__projectsmith__propose_decision",
+      "mcp__projectsmith__get_proposal",
+      "mcp__projectsmith__record_implementation",
+      "mcp__projectsmith__ingest_fact_candidates",
+      "mcp__projectsmith__consolidate_session_facts",
+      "mcp__projectsmith__integrate_session_spec",
+      "mcp__projectsmith__pull_session_spec",
+      "mcp__projectsmith__oq_backfill_supersession",
+      "mcp__projectsmith__get_session_summary",
+      "mcp__projectsmith__list_ask_history",
+      "mcp__projectsmith__list_pending_decisions",
+      "mcp__projectsmith__report_progress",
+      "mcp__projectsmith__upload_screenshot",
+      "mcp__projectsmith__get_ui_screenshots"
+
+    ],
+
+    "deny": [
+
+      "Bash(git push --force:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git rebase -i:*)",
+      "Bash(git clean -fd:*)",
+
+      "Bash(sudo:*)",
+      "Bash(chmod 777:*)"
+
+    ]
+  },
+
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash .claude/hooks/on_session_start.sh" }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash .claude/hooks/on_user_prompt.sh" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "bash .claude/hooks/on_pretool_edit.sh" }
+        ]
+      }
+    ]
+  }
+}

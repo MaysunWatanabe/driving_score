@@ -1,0 +1,45 @@
+<ion-header>
+  <ion-toolbar>
+    <div class="back">
+      <ion-back-button color="secondary" defaultHref="opening" text=""></ion-back-button>
+    </div>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [scrollEvents]="true">
+  <div #map id="map" ></div>
+
+  <div class="pointer">
+    <img src="assets/images/pointer.png" (click)="onPointer()">
+  </div>
+
+  <div>
+    <video #video id="video" controls playsinline controlslist="nodownload"></video>
+  </div>
+
+  <div class="timestamp">
+    <div class="timestamp_back" (click)="onBack()">◁</div>
+    <div class="timestamp_title">発生日時</div>
+    <div class="timestamp_text">{{spotTimestamp}}</div>
+    <div class="timestamp_next" (click)="onNext()" >▷</div>
+  </div>
+
+  <div class="info">検知情報</div>
+  <div class="flex" *ngIf="label1 != '' && spotComment1 != ''">
+    <div class="title">{{label1}}</div>
+    <div class=comment>{{spotComment1}}</div>
+  </div>
+  <div class="flex" *ngIf="label2 != '' && spotComment2 != ''">
+    <div class="title">{{label2}}</div>
+    <div class=comment>{{spotComment2}}</div>
+  </div>
+  <div class="flex" *ngIf="label3 != '' && spotComment3 != ''">
+    <div class="title">{{label3}}</div>
+    <div class=comment>{{spotComment3}}</div>
+  </div>
+  <div class="flex" *ngIf="label4 != '' && spotComment4 != ''">
+    <div class="title">{{label4}}</div>
+    <div class=comment>{{spotComment4}}</div>
+  </div>
+
+</ion-content>

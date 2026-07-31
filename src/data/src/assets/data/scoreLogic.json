@@ -1,0 +1,377 @@
+{
+  "version": 0.33,
+  "settings": {
+    "order_of_message":0,
+    "label": {
+      "label1": "アクセル/ブレーキ操作の丁寧さ",
+      "label2": "ハンドル操作の安定性",
+      "label3": "",
+      "label4": "",
+      "labelA": "歩行機能",
+      "labelB": "注意機能",
+      "labelC": ""
+    },
+    "score_logic_interval_ms": 300,
+    "capability_score_target_days": 30,
+    "score_show_star": {
+      "area1": true,
+      "area2": true,
+      "area3": true
+    }
+  },
+  "intersection": [
+    {"lat": 35.46025745017747, "lon":139.63377896689911, "name": "けいゆう病院前"},
+    {"lat": 35.45776663871314, "lon":139.6292854209744, "name": "美術館北"},
+    {"lat": 35.457197986054815, "lon":139.62824315430478, "name": "いちょう通り西"},
+    {"lat": 35.45859958746394, "lon":139.62689607379784, "name": "みなとみらい四丁目"},
+    {"lat": 35.462708141169635, "lon":139.6265617618472, "name": "とちのき通り西"}
+  ],
+  "messages":[
+    {
+      "id": 100,
+      "key": "over_all",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 40
+      },
+      "message": "結果は残念でしたが、運転は練習が大切です。基本的な安全確認を意識して、一緒に頑張りましょう！"
+    },
+    {
+      "id": 101,
+      "key": "over_all",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 40,
+        "exclusive_max": 60
+      },
+      "message": "結果は残念でしたが、運転は学びの機会です。特に安全確認と交差点での判断を意識しましょう。練習を重ねて、より良くなるよう目指して頑張りましょう！"
+    },
+    {
+      "id": 102,
+      "key": "over_all",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 60,
+        "exclusive_max": 80
+      },
+      "message": "良い結果ですが、まだ改善の余地があります。特に安全確認と交差点での判断を意識しましょう。もっと良くなるよう、一緒に頑張りましょう！"
+    },
+    {
+      "id": 103,
+      "key": "over_all",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 80
+      },
+      "message": "素晴らしい運転でした！特に安全確認が良かったです。交差点での判断をさらに意識して、もっと素晴らしい運転を目指しましょう！"
+    },
+    {
+      "id": 200,
+      "key": "score1",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 40
+      },
+      "message": "安全運転を心がけているのは素晴らしいです。\n後退駐車ではブレーキを早めに緩めることでスムーズになります。\n自分のペースで練習して、安心して運転できるようにしましょう。",
+      "custom": "減速度評価"
+    },
+    {
+      "id": 201,
+      "key": "score1",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 40,
+        "exclusive_max": 60
+      },
+      "message": "安全運転を心がけているようですが、改善点があります。\n後退駐車では、ブレーキを少し早めに緩めることでスムーズに駐車できます。\n練習を重ねることで、より安全な運転ができるようになるでしょう。",
+      "custom": "減速度評価"
+    },
+    {
+      "id": 202,
+      "key": "score1",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 60,
+        "exclusive_max": 80
+      },
+      "message": "安全運転は素晴らしいですが、改善点もあります。\n後退駐車では、ブレーキを早めに緩めてスムーズに後退することを意識すると、より良い駐車ができるでしょう。",
+      "custom": "減速度評価"
+    },
+    {
+      "id": 203,
+      "key": "score1",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 80
+      },
+      "message": "素晴らしい運転でした！安全運転を心がけていて，とても良かったです。\n後退駐車の際にブレーキをしっかり踏むことで、安全を確保しているのが素晴らしいですね。\nこのような慎重な運転はとても重要です。",
+      "custom": "減速度評価"
+    },
+    {
+      "id": 204,
+      "key": "score1",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 40
+      },
+      "message": "後退中の加速が高く、改善が必要です。\nゆっくりとした速度を意識して、丁寧なブレーキ操作を心がけてください。\n改善していけるようサポートしますので、一緒に頑張りましょう。",
+      "custom": "加速度評価"
+    },
+    {
+      "id": 205,
+      "key": "score1",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 40,
+        "exclusive_max": 60
+      },
+      "message": "後退中に加速度が高くなってしまう場面がありましたね。\nもう少しゆっくりとした速度を意識することが重要です。\nブレーキを軽く使いながら、車の動きをコントロールすることが大切です。",
+      "custom": "加速度評価"
+    },
+    {
+      "id": 206,
+      "key": "score1",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 60,
+        "exclusive_max": 80
+      },
+      "message": "運転お疲れ様でした。後退中に加速度が高くなってしまう場面がありましたね。\n急な加速は事故の原因になることがありますので、もう少しゆっくりとした速度を意識することが重要です。",
+      "custom": "加速度評価"
+    },
+    {
+      "id": 207,
+      "key": "score1",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 80
+      },
+      "message": "素晴らしい運転でした！特に後退駐車の際の周囲の確認や安全運転が非常に良かったです。\n周囲をしっかり確認していた点は評価できます。安全運転を心掛けているのが伝わりました。",
+      "custom": "加速度評価"
+    },
+    {
+      "id": 208,
+      "key": "score1",
+      "type": "negative",
+      "area": "stop_sign",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 80
+      },
+      "message": "%INTERSECTION交差点で\n急な減速が確認されました\n慌てずゆっくり減速してください"
+    },
+    {
+      "id": 209,
+      "key": "score1",
+      "type": "negative",
+      "area": "intersection",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 80
+      },
+      "message": "%INTERSECTION交差点で\n急な減速が確認されました\n慌てずゆっくり停止してください"
+    },
+    {
+      "id": 210,
+      "key": "score1",
+      "type": "negative",
+      "area": "parking",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 80
+      },
+      "message": "駐車場で急な加速が確認されました\n慌てずゆっくり進んでください"
+    },
+    {
+      "id": 300,
+      "key": "score2",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 40
+      },
+      "message": "車線内でふらつくことが多かったですね。\n車線の中央を意識し、目線を前方にしっかりと固定し、ハンドルをしっかり握ることが大切です。\n改善していけるよう一緒に取り組んでいきましょう。"
+    },
+    {
+      "id": 301,
+      "key": "score2",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 40,
+        "exclusive_max": 60
+      },
+      "message": "巡行中に車線内でふらつく場面が多かったです。\n目線を前方に固定し、車線の中央を意識しましょう。\nハンドルをしっかり握り、微調整しながら運転することが大切です。"
+    },
+    {
+      "id": 302,
+      "key": "score2",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 60,
+        "exclusive_max": 80
+      },
+      "message": "全体的には良い運転でしたが、車線内でふらつく場面がありましたね\n車線の中央を意識することが大切です。ふらつきがあると、他の運転者に影響を与える可能性があります。"
+    },
+    {
+      "id": 303,
+      "key": "score2",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 80
+      },
+      "message": "素晴らしい運転でした！車線内でしっかりとまっすぐ走れていて、非常に安定していました。\n特に、巡行走行中のスピードの維持や、周囲の状況への注意が素晴らしかったです。"
+    },
+    {
+      "id": 304,
+      "key": "score2",
+      "type": "negative",
+      "area": "stop_sign",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 80
+      },
+      "message": "%INTERSECTION交差点で\n急なハンドル操作が確認されました\n周囲の確認を忘れずに余裕をもって走行してください"
+    },
+    {
+      "id": 305,
+      "key": "score2",
+      "type": "negative",
+      "area": "intersection",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 80
+      },
+      "message": "%INTERSECTION交差点で\n急なハンドル操作が確認されました\n周囲の確認を忘れずに余裕をもって走行してください"
+    },
+    {
+      "id": 306,
+      "key": "score2",
+      "type": "negative",
+      "area": "parking",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 80
+      },
+      "message": "駐車場で急なハンドル操作が確認されました\n周囲との間隔に十分注意してください"
+    },
+    {
+      "id": 600,
+      "key": "scoreA",
+      "area": "all",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 40
+      },
+      "message": "安定性に欠ける点があります。\n短い距離から歩く練習をしてみてください。\n理学療法士に相談し、具体的なアドバイスを受けることをお勧めします。\n焦らず少しずつ進めていきましょう。"
+    },
+    {
+      "id": 601,
+      "key": "scoreA",
+      "area": "all",
+      "score": {
+        "inclusive_min": 40,
+        "exclusive_max": 60
+      },
+      "message": "安定性に欠ける点が見受けられます。\n短い距離から歩く習慣を身につけることが重要です。\n理学療法士に相談し、アドバイスやトレーニングプランを受けることができますので、ぜひ検討してみてください。"
+    },
+    {
+      "id": 602,
+      "key": "scoreA",
+      "area": "all",
+      "score": {
+        "inclusive_min": 60,
+        "exclusive_max": 80
+      },
+      "message": "しっかりと歩行ができていることが予想されます。\nただ、いくつかの点で改善の余地があると感じました。歩幅を広げる練習をすることで、より安定した歩行ができるようになると思います。"
+    },
+    {
+      "id": 603,
+      "key": "scoreA",
+      "area": "all",
+      "score": {
+        "inclusive_min": 80
+      },
+      "message": "しっかりとした足取りで、非常に安定していることが想像されます。\n特に、歩幅やリズムが良く、周囲の状況をしっかりと確認することができる印象です。"
+    },
+    {
+      "id": 700,
+      "key": "scoreB",
+      "area": "all",
+      "score": {
+        "inclusive_min": 0,
+        "exclusive_max": 40
+      },
+      "message": "認知機能に課題が見受けられますが、自然なことです。\n記憶トレーニング等を取り入れ、\n専門家に相談することもお勧めします。友人や家族との交流も大切です。\n焦らず少しずつ進めていきましょう。"
+    },
+    {
+      "id": 701,
+      "key": "scoreB",
+      "area": "all",
+      "score": {
+        "inclusive_min": 40,
+        "exclusive_max": 60
+      },
+      "message": "認知機能に課題が見受けられますが、これは自然なことです。\n記憶トレーニングやパズルを取り入れ、少しずつ取り組むことで改善が期待できます。\n専門家に相談することもお勧めします。"
+    },
+    {
+      "id": 702,
+      "key": "scoreB",
+      "area": "all",
+      "score": {
+        "inclusive_min": 60,
+        "exclusive_max": 80
+      },
+      "message": "記憶力や注意力において一定の能力をお持ちのようです。\nいくつかの点でさらに向上の余地がありますので、日常生活の中で簡単な記憶トレーニングやパズルを取り入れてみることをお勧めします。"
+    },
+    {
+      "id": 703,
+      "key": "scoreB",
+      "area": "all",
+      "score": {
+        "inclusive_min": 80
+      },
+      "message": "素晴らしい！非常に優れた認知機能をお持ちです\n特に、記憶力や注意力が非常に良好なことが予想されます"
+    },
+    {
+      "id": 801,
+      "key": "score1",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 0
+      },
+      "message": "減速が必要な時は早めにブレーキを踏み、後方への影響も考慮して運転しましょう。危険がせまった時の運転が普段とどのように違ったか振り返ることで次回の運転に役立ちます。",
+      "custom": "ヒヤリ"
+    },
+    {
+      "id": 802,
+      "key": "score2",
+      "type": "negative",
+      "area": "all",
+      "score": {
+        "inclusive_min": 0
+      },
+      "message": "走行中に急ハンドルを非常に強く切った場面がありました。強い急ハンドルは車両を不安定にし、事故のリスクが高まります。障害物を見つけたら周囲を確認し、早めに減速して冷静に進路を変えましょう。",
+      "custom": "ヒヤリ"
+    }
+  ]
+}

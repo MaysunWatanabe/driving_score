@@ -1,0 +1,7 @@
+{
+  "name": "driving-score",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular"
+}

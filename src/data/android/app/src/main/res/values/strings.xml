@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">driving-score</string>
+    <string name="title_activity_main">driving-score</string>
+    <string name="package_name">jp.co.nissan.drivingscore</string>
+    <string name="custom_url_scheme">jp.co.nissan.drivingscore</string>
+</resources>

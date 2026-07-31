@@ -1,0 +1,122 @@
+{
+  "usecases": [
+    {
+      "actor": "運転者（ドライバー）",
+      "trigger": "オープニング画面で「ログイン」ボタンを押下、または前回ログインから72時間以内で自動ログイン",
+      "main_flow": [
+        "ステップ1: opening.pageがLoginService.autoLoginを試行し、成功したらloginStatusをtrueに切替。",
+        "ステップ2: 未ログインなら「ログイン」ダイアログでID(前回値プリセット)とPASSWORDを入力。",
+        "ステップ3: PASSWORDをMD5化しUserDbService.selectUser(id, hash)でSQLiteのusersを照合。",
+        "ステップ4: 成功時はlogin-keyにタイムスタンプ付きで保存、last-login-user-idも更新し、ログイン成功ダイアログに直近スコアのover_all最新コメントを表示。",
+        "ステップ5: 失敗時はログイン失敗ダイアログを表示。"
+      ],
+      "outputs": [
+        "アプリのログイン状態（loginStatus=true）",
+        "@ionic/storageのlogin-key（自動ログイン用）",
+        "ログイン成功/失敗ダイアログ表示"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者",
+      "trigger": "オープニング画面で「アカウント作成」または「アカウント編集」を選択",
+      "main_flow": [
+        "ステップ1: account/create または account/modify に遷移し、フォームバリデーション(ID=半角英数, PASS=英数記号, 身長=数字パターン)を構成。",
+        "ステップ2: 編集時は現在のログインユーザー情報を復元、PASSWORDは伏字4文字を初期表示。",
+        "ステップ3: 「作成」または「更新」押下でMD5化したPASSWORDを含むUserエンティティを構築。",
+        "ステップ4: LoginService.insert/updateがusersテーブルに書き込み、成功/失敗ダイアログを表示。成功時は自動的にログアウトしopeningへ戻る。",
+        "ステップ5: 「削除」押下時は確認ダイアログ→削除→UserDbService.deleteUserとScoreDbService.deleteでusers/score/score_history/capability_scoreを削除し、opening画面へ戻る。"
+      ],
+      "outputs": [
+        "usersテーブルの新規/更新レコード",
+        "（削除時）ユーザーと紐づく全診断履歴の消去",
+        "作成/更新/削除の成否ダイアログ"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者",
+      "trigger": "「運転診断」ボタンを押下しDrivingPageで「開始」ボタンをタップ",
+      "main_flow": [
+        "ステップ1: DrivingPage.onStartがscoreLogic/scoreLogicJsonをローカルストレージに永続化(必要ならファイルにも保存)しSensorService.startScoreLogicを呼ぶ。",
+        "ステップ2: SensorServiceがGPS/加速度/ジャイロ/磁力の受信を10msタイマで集約し、SensorManagerでキャリブレーション後、DrivingPageへ通知。",
+        "ステップ3: BLEモードなら@capacitor-community/bluetooth-le経由でDrivingCanDataからCANフレーム(車速/加速度/舵角ほか)を復調し統合。",
+        "ステップ4: ScoreLogic.startがscoreLogicInterval(既定300ms)ごとに動的関数を実行しScoreを生成、平均でoverAll/score1..4を更新、hiyariフラグ発生時はMapService.drawMarkerでヒヤリ地点を記録。",
+        "ステップ5: 録画設定ONならMediaRecorderで60秒毎に動画をローカルファイルへ追記書込み。",
+        "ステップ6: 「停止」押下時、ScoreDbService.insertScoreで診断結果と全コメント・能力指標を保存、fitBoundsで軌跡表示、終了ダイアログを表示。"
+      ],
+      "outputs": [
+        "score/score_history/capability_scoreテーブルへの追記",
+        "ヒヤリ地点マーカーと走行軌跡（メモリ）",
+        "（設定ON時）動画webmファイル、ログgzファイル、センサーログgzファイル",
+        "直近スコアID(loginService.scoreId)"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者",
+      "trigger": "運転診断終了後にDrivingPageで自スコアをタップ、またはヒヤリマーカーをタップ",
+      "main_flow": [
+        "ステップ1: スコアタップで/commentへ遷移し、CommentPageがscoreIdでScoreDbServiceから対象スコアを取得。",
+        "ステップ2: over_all/score1..4ごとにpositiveは最高スコアのmessage、negativeは最低スコアのmessageを1件ずつ選定し、%COUNT/%INTERSECTIONを実値に置換して表示。",
+        "ステップ3: ヒヤリマーカータップでは/bad-spot/<recordedPath>へ遷移し、MapServiceの選択マーカー位置に合わせて録画動画を該当秒数からシーク再生。",
+        "ステップ4: BadSpotPageで前/次ボタンや動画再生時刻の進行に合わせマーカーとコメントを自動更新。"
+      ],
+      "outputs": [
+        "CommentPageに表示する4種+総合のアドバイス文",
+        "BadSpotPageに表示する時刻・4種コメント・動画再生位置"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者",
+      "trigger": "オープニング画面から「履歴」（オープニング→自動ログイン成功→履歴経路またはUI固有導線）で/history画面を開く",
+      "main_flow": [
+        "ステップ1: HistoryPage.ionViewWillEnterがScoreDbService.selectAllScoreで自ユーザーの全診断結果を取得。",
+        "ステップ2: 最新30件までの日付・over_all・score1-4値をChart.jsで折れ線描画。settings.scoreShowStarに従い実点か『101-スコア』の順位表示を切替。",
+        "ステップ3: メッセージ集計から最頻出のpositive/negativeを抽出し「総合」「その他4指標」のコメントを描画。表示順はorderOfMessage設定で切替。",
+        "ステップ4: 能力指標タブに切り替えると、直近capabilityScoreTargetDays日を集計した平均を大値表示し、日次サブグラフへドリルダウン可能。"
+      ],
+      "outputs": [
+        "履歴グラフ・能力指標グラフ描画",
+        "総合/指標別コメントの文字列",
+        "（デバッグログ）過去N件の確認用ログ"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運転者/管理者（アプリ操作者）",
+      "trigger": "オープニング画面の「設定」→設定画面で録画/GPSデモ/ログ保存/センサーログ保存/センサーモードを切替、またはScoreLogicJson/ScoreLogicを更新/保存/編集",
+      "main_flow": [
+        "ステップ1: 各トグルの変更を@ionic/storageに永続化し、loginService.settingsのメモリキャッシュも同期更新。",
+        "ステップ2: 「更新」でユーザーが選んだJSON/JSファイルをXMLHttpRequestで読み込み、JSON妥当性チェックまたはScoreLogic.testScoreLogicによる試験実行を実施。",
+        "ステップ3: 成功時のみscoreLogicJsonKey/scoreLogicKeyを更新し、LoginService.initializeを呼び直して設定を反映。失敗時はエラーメッセージ付きダイアログを表示。",
+        "ステップ4: 「保存」でAndroidは端末Documents/driving-score/へファイル書き出し、ブラウザはaタグでダウンロード。",
+        "ステップ5: 「編集」ボタンでeditページに遷移し、GUIエディタでスコアロジックを書き換え可能。"
+      ],
+      "outputs": [
+        "@ionic/storageの各設定キー",
+        "scoreLogicJsonKey / scoreLogicKey の新JS/JSON",
+        "エクスポートしたテキストファイル",
+        "更新成否/保存完了ダイアログ"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "ロジック開発者（ブラウザで動作を検証する開発担当）",
+      "trigger": "editページでセンサーログgzファイルと録画webmをアップロードし、テキストエディタで診断ロジックを書き換えて「実行」/「保存」",
+      "main_flow": [
+        "ステップ1: DemoData.pushSensorLogFileでpakoによりgzを解凍し、videoTime単位のデモセンサー列を復元。",
+        "ステップ2: 「実行」でScoreLogic.startを起動、runSensorTimerがDemoData.getSensorLogDataで10ms間隔にデモデータを流し、キャリブレーション+動的関数実行を行い、Chart.jsに数十系列の波形を描画。",
+        "ステップ3: 「一時停止」「再開」「レンジ移動」で任意時刻からリプレイ、動画も同期シーク。",
+        "ステップ4: 「保存」でScoreLogic.testScoreLogicの構文検証を行い、成功時にscoreLogicKeyへ格納し先頭コメント`//<timestamp>`と`//YYYY-MM-DD HH:MM:SS`を書き換え、ブラウザではtxtとしてダウンロード。"
+      ],
+      "outputs": [
+        "scoreLogicKey（新しい診断ロジック本体）",
+        "更新済みscoreLogic.<日付>.txt（ダウンロード）",
+        "エディタ画面の波形・スコア・アドバイス表示"
+      ],
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,394 @@
+//1736899200000
+//2025-01-15 00:00:00
+/*
+ * 1行目の数値は、このファイルを生成した時のUnixTimeです。
+ * 設定画面で直接編集やファイルのアップロードを行った時に更新されます。
+ * アプリをアップデートした時に、アプリに標準で入っているスコアロジックのUnixTimeが現状よりも新しい場合は更新されます。
+ * 古い場合は、アプリをアップデートしてもスコアロジックは更新しません（現状を維持します）
+ * この対応は、スコアロジックが意図せず昔のバージョンに戻ってしまうことを防ぐためです。
+ */
+/*
+■使用できる変数
+  //現在時間
+  currentTimestamp
+  //前回時間
+  lastTimestamp
+  // GPS
+  geolocationList: [ {
+    timestamp,
+    latitude,
+    longitude,
+    accuracy,
+    altitude,
+    altitudeAccuracy,
+    heading,
+    speed,
+    repeat
+  } ]
+  // 加速度センサー
+  accelerationList: [ {
+    timestamp,
+    accelerationIncludingGravity {
+      x, y, z,
+      lowPass: {
+        x, y, z
+      },
+      // 端末を縦に持った時と同じようにあるようにセンサー値を回転した値
+      rotate: {
+        x, y, z,
+        lowPass: {
+          x, y, z
+        }
+      }
+    },
+    rotationRate: { beta, gamma, alpha },
+    interval,
+    repeat
+  } ]
+  // ジャイロセンサー
+  gyroscopeList: [ {
+    timestamp,
+    beta, gamma, alpha,
+    // 端末を縦に持った時と同じようにあるようにセンサー値を回転した値
+    rotate: {
+      beta, gamma, alpha
+    },
+    repeat
+  } ]
+  // 地磁気センサー
+  magnetometerList: [ {
+    timestamp,
+    x, y, z,
+    repeat
+  } ]
+  // 車載CANデータ ※アプリの設定ページで利用するセンサー情報に「smartphoneOnly」を指定するとNULLになる
+  canDataList: [ {
+    vehicleSpeed,       //単位:km/h、0~255
+    longAcc,            //単位:G、-1.28~1.27
+    latAcc,             //単位:G、-1.28~1.27
+    frontDistance,      //単位:m、0~127
+    lateralDistance,    //単位:m、-64~63.5
+    steeringAngle,      //単位:degree、-1080~1080（L:+、R:-）
+    accelPedalPosition, //単位:%、0~100
+    brakePressure,      //単位:bar、0~126
+    brakeSwitch,        //0:OFF、1:ON
+    shiftIndication,    //1:P、2:R、3:N、4:D、6:L、7:B
+    turnSignal          //0:ウインカーOFF、1:左ウィンカーON、2:右ウィンカーON、3:左右ウィンカー（ハザード）ON
+  } ]
+  //運転診断用のコンフィグファイル（JSON）
+  scoreLogicJson: {
+    intersection: [ { lat, lon, name } ],
+    messages: [ { id, key, type, message } ],
+    capability_messages: [ { id, key, type, message } ]
+  }
+  //本運転診断ロジックが返却した過去の診断結果
+  scoreLogicResultList: [ { timestamp, overAll, score1, score2, score3, score4, messages: [ { id, key, type, message, hiyari } ] } ]
+  //何に使ってもいいテンポラリ用の連組配列
+  localData: {} //運転診断中にデータが保持されれ、運転診断スコアロジック内で自由に使える変数
+
+■ログの出力方法
+  例：log.debug('[DrivingScore][ScoreLogic] intersection=' + intersection.name);
+  log.debug('デバッグログ');
+  log.error('エラーログ');
+
+■グラフ描画
+PCのブラウザで開発するときはグラフを表示することができる
+drawGraph関数の第１引数（グラフ名）ごとに線が引かれるので、複数の数値を可視化することができる
+スマートフォンのアプリで起動した時は無効になるので、プログラムコードが残っていても問題ない
+　例：drawGraph('グラフ名', 数値); //線で描画
+　例：drawGraph('グラフ名', 数値, 'line'); //線で描画
+　例：drawGraph('グラフ名', 数値, 'point'); //点で描画
+*/
+
+if (geolocationList.length == 0) {
+  return null;
+}
+
+// 交差点名を取得する関数
+const isIntersectionFunc = (geolocation, intersectionList) => {
+  //小数点以下4桁 (精度7) は8m以内
+  const accuracy = 10000;
+  const lat = Math.round(geolocation.latitude * accuracy);
+  const lon = Math.round(geolocation.longitude * accuracy);
+
+  for (let i=0; i<intersectionList.length; i++) {
+    const intersection = intersectionList[i];
+    const lat2 = Math.round(intersection.lat * accuracy);
+    const lon2 = Math.round(intersection.lon * accuracy);
+    if (lat == lat2 && lon == lon2 && intersection.checked === undefined) {
+      log.debug('[DrivingScore][ScoreLogic] intersection=' + intersection.name);
+      return intersection.name;
+    }
+  }
+  return '';
+};
+
+//メッセージを取得する関数
+const getMessage = (json, key, area, score) => {
+  //運転診断用のメッセージ
+  for (let i=0; i<json.messages.length; i++) {
+    if (json.messages[i].key == key
+      && json.messages[i].area == area
+      && json.messages[i].score.inclusive_min <= score
+      && (json.messages[i].score.exclusive_max === undefined || score < json.messages[i].score.exclusive_max)
+    ) {
+      return json.messages[i];
+    }
+  }
+  //能力指標用のメッセージ
+  for (let i=0; i<json.capability_messages.length; i++) {
+    if (json.capability_messages[i].key == key
+      && json.capability_messages[i].area == area
+      && json.capability_messages[i].score.inclusive_min <= score
+      && (json.capability_messages[i].score.exclusive_max === undefined || score < json.capability_messages[i].score.exclusive_max)
+    ) {
+      return json.capability_messages[i];
+    }
+  }
+  return null;
+};
+
+// 現在位置の交差点名を取得
+const pos = geolocationList.length-1;
+const intersectionName = isIntersectionFunc(geolocationList[pos], scoreLogicJson.intersection);
+
+// GPSセンサー
+let speedMax = 0;
+geolocationList.forEach((sensor) => {
+  // 前回実行時から増えたセンサー値から一番大きい取得
+  if (lastTimestamp < sensor.timestamp) {
+    speedMax = Math.max(speedMax , sensor.speed ?? 0);
+  }
+});
+
+// 端末を縦に持った時と同じになるように補正した値（rotate)を使用する
+// 加速度センサー
+let accelMaxZ = 0;
+let accelMinZ = 0;
+accelerationList.forEach((sensor) => {
+  // 前回実行時から増えたセンサー値から一番大きい/小さい値を取得
+  if (lastTimestamp < sensor.timestamp) {
+    accelMaxZ = Math.max(accelMaxZ, sensor.accelerationIncludingGravity.rotate.lowPass.z);
+    accelMinZ = Math.min(accelMinZ, sensor.accelerationIncludingGravity.rotate.lowPass.z);
+  }
+});
+// ジャイロセンサー
+let gammaMax = 0;
+let gammaMin = 0;
+gyroscopeList.forEach((sensor) => {
+  if (lastTimestamp < sensor.timestamp) {
+    gammaMax = Math.max(gammaMax, sensor.rotate.gamma);
+    gammaMin = Math.min(gammaMin, sensor.rotate.gamma);
+  }
+});
+
+// 前回Negative判定された情報を残すための変数を初期化
+if (localData.negativeTime === undefined) {
+  // 前回Negative判定されたTimestamp
+  localData.negativeTime = {
+    overAll: 0,
+    score1: 0,
+    score2: 0,
+    score3: 0,
+    score4: 0
+  };
+}
+if (localData.negativeScore === undefined) {
+  // Negative判定されて減算されていくスコア
+  localData.negativeScore = {
+    overAll: 100,
+    score1: 100,
+    score2: 100,
+    score3: 100,
+    score4: 100,
+    lastOverAll: 100
+  };
+}
+// 同じNegative判定されないように無効にする時間
+const NEGATIVE_INTERVAL = 10000;
+// Negative判定の時に減らすスコア値
+const NEGATIVE_SCORE = 8;
+const NEGATIVE_OVER_ALL_SCORE = 10;
+
+// 運転診断スコアロジックの返却値
+// ※スコア値を加算減算させたくないときは-1を指定する
+// ※運転診断ロジックが返却した-1以外の平均値が診断スコアになる
+// ※hiyariをtrueにすると地図上にヒヤリ地点として登録される
+const result = {
+  score:{
+    overAll: -1,
+    score1: -1,
+    score2: -1,
+    score3: -1,
+    score4: -1
+  },
+  messages: [],
+  intersection: '',
+  hiyari: false,
+  //能力指標
+  capabilityScore: {
+    scoreA: {
+      score: -1,
+      message: ''
+    },
+    scoreB: {
+      score: -1,
+      message: ''
+    },
+    scoreC: {
+      score: -1,
+      message: ''
+    }
+  }
+};
+
+// アクセル
+// 加速度センサーが加速したときのZ値が-1.8ならスコアが減少する（10秒間隔）
+const score1Type = accelMinZ <= -1.8 ? 'negative' : 'positive';
+if (score1Type == 'negative' && localData.negativeTime.score1 + NEGATIVE_INTERVAL <= currentTimestamp) {
+  if (0 <= localData.negativeScore.score1 - NEGATIVE_SCORE)
+    localData.negativeScore.score1 -= NEGATIVE_SCORE;
+
+  result.score.score1 = localData.negativeScore.score1;
+
+  const message = getMessage(scoreLogicJson, 'score1', 'all', result.score.score1);
+  if (message !== null)
+    result.messages.push(message);
+  // インターバル時間更新
+  localData.negativeTime.score1 = currentTimestamp;
+}
+
+// ブレーキ
+// 加速度センサーが減速した時のZ値が1.8ならスコアが減少する（10秒間隔）
+/*
+const score2Type = 1.8 <= accelMaxZ ? 'negative' : 'positive';
+if (score2Type == 'negative' && localData.negativeTime.score2 + NEGATIVE_INTERVAL <= currentTimestamp) {
+  if (0 <= localData.negativeScore.score2 - NEGATIVE_SCORE)
+    localData.negativeScore.score2 -= NEGATIVE_SCORE;
+
+  result.score.score2 = localData.negativeScore.score2;
+
+  const message = getMessage(scoreLogicJson, 'score2', 'all', result.score.score2);
+  if (message !== null)
+    result.messages.push(message);
+  // インターバル時間更新
+  localData.negativeTime.score2 = currentTimestamp;
+}
+*/
+
+// ハンドル
+// 左右にハンドルを切った時のガンマ値が+-35ならスコアが減少する（10秒間隔）
+const score3Type = gammaMax <= -35 || 35 <= gammaMax ? 'negative' : 'positive';
+if (score3Type == 'negative' && localData.negativeTime.handle + NEGATIVE_INTERVAL <= currentTimestamp) {
+  if (0 <= localData.negativeScore.score3 - NEGATIVE_SCORE)
+    localData.negativeScore.score3 -= NEGATIVE_SCORE;
+
+  result.score.score3 = localData.negativeScore.score3;
+
+  const message = getMessage(scoreLogicJson, 'score3', 'all', result.score.score3);
+  if (message !== null)
+    result.messages.push(message);
+  // インターバル時間更新
+  localData.negativeTime.score3 = currentTimestamp;
+}
+
+// スピード
+// GPSのspeedの値が40キロ以上を続けている限りスコアが減少し続ける（10秒間隔）
+/*
+const score4Type = 40 <= (speedMax * 3.6) ? 'negative' : 'positive';
+if (score4Type == 'negative' && localData.negativeTime.speed + NEGATIVE_INTERVAL <= currentTimestamp) {
+  if (0 <= localData.negativeScore.score4 - NEGATIVE_SCORE)
+    localData.negativeScore.score4 -= NEGATIVE_SCORE;
+
+  result.score.score4 = localData.negativeScore.score4;
+
+  const message = getMessage(scoreLogicJson, 'score4', 'all', result.score.score4);
+  if (message !== null)
+    result.messages.push(message);
+  // インターバル時間更新
+  localData.negativeTime.score4 = currentTimestamp;
+}
+*/
+
+// 車載CANデータ
+if (0 < canDataList.length) {
+  //log.debug('[DrivingScore][ScoreLogic] canDataList', canDataList[canDataList.length-1]);
+}
+
+// 総合スコア
+// 3秒以内で２種類のnegativeが発生したら、総合スコアをnegativeにしてヒヤリ地点とする
+let negativeCount = 0;
+negativeCount += (localData.negativeTime.score1 + NEGATIVE_INTERVAL <= currentTimestamp) ? 0 : 1;
+negativeCount += (localData.negativeTime.score2 + NEGATIVE_INTERVAL <= currentTimestamp) ? 0 : 1;
+negativeCount += (localData.negativeTime.score3 + NEGATIVE_INTERVAL <= currentTimestamp) ? 0 : 1;
+negativeCount += (localData.negativeTime.score4 + NEGATIVE_INTERVAL <= currentTimestamp) ? 0 : 1;
+const overAllType = 2 <= negativeCount ? 'negative' : 'positive';
+if (overAllType == 'negative' && localData.negativeTime.overAll + NEGATIVE_INTERVAL <= currentTimestamp) {
+  localData.negativeScore.overAll -= NEGATIVE_OVER_ALL_SCORE;
+
+  result.score.overAll = localData.negativeScore.overAll;
+  if (result.score.overAll < 0)
+    result.score.overAll = 0;
+
+  const message = getMessage(scoreLogicJson, 'over_all', 'all', result.score.overAll);
+  if (message !== null)
+    result.messages.push(message);
+  // インターバル時間更新
+  localData.negativeTime.overAll = currentTimestamp;
+
+  //　ヒヤリ判定
+  result.hiyari = true;
+  // デバッグ用のグラフ描画
+  drawGraph('ヒヤリ地点', 1, 'point');
+
+} else if (overAllType == 'positive'
+  && localData.negativeScore.overAll != localData.negativeScore.lastOverAll) {
+  // 総合スコアがnegativeになってから、20秒経過して何もnegativeが発生していなければpositiveにする
+  negativeCount = 0;
+  negativeCount += (localData.negativeTime.score1 + (NEGATIVE_INTERVAL*2) <= currentTimestamp) ? 0 : 1;
+  negativeCount += (localData.negativeTime.score2 + (NEGATIVE_INTERVAL*2) <= currentTimestamp) ? 0 : 1;
+  negativeCount += (localData.negativeTime.score3 + (NEGATIVE_INTERVAL*2) <= currentTimestamp) ? 0 : 1;
+  negativeCount += (localData.negativeTime.score4 + (NEGATIVE_INTERVAL*2) <= currentTimestamp) ? 0 : 1;
+  negativeCount += (localData.negativeTime.overAll + (NEGATIVE_INTERVAL*2) <= currentTimestamp) ? 0 : 1;
+  if (negativeCount == 0) {
+    result.score.overAll = 100;
+
+    const message = getMessage(scoreLogicJson, 'over_all', 'all', result.score.overAll);
+    if (message !== null)
+      result.messages.push(message);
+    // インターバル時間更新
+    localData.negativeScore.lastOverAll = localData.negativeScore.overAll;
+  }
+}
+
+// 能力指標のダミー計算処理
+if (Math.random() <= 0.01) {
+  // 1%の確率で能力指標の値を返却する
+  // Score
+  result.capabilityScore.scoreA.score = Math.random() * 100;
+  result.capabilityScore.scoreB.score = Math.random() * 100;
+  result.capabilityScore.scoreC.score = Math.random() * 100;
+  // Message
+  console.log(getMessage(scoreLogicJson, 'scoreA', 'all', result.capabilityScore.scoreA.score));
+  result.capabilityScore.scoreA.message = getMessage(scoreLogicJson, 'scoreA', 'all', result.capabilityScore.scoreA.score);
+  result.capabilityScore.scoreB.message = getMessage(scoreLogicJson, 'scoreB', 'all', result.capabilityScore.scoreB.score);
+  result.capabilityScore.scoreC.message = getMessage(scoreLogicJson, 'scoreC', 'all', result.capabilityScore.scoreC.score);
+}
+
+// すべてポジティブスコアなのか判定
+if (result.score.overAll == -1
+  && result.score.score1 == -1
+  && result.score.score2 == -1
+  && result.score.score3 == -1
+  && result.score.score4 == -1) {
+
+  // 能力値指標が未返却なのか判定
+  if (result.capabilityScore.scoreA.score == -1
+    && result.capabilityScore.scoreB.score == -1
+    && result.capabilityScore.scoreC.score == -1) {
+
+    // すべてポジティブ、能力値指標が未返却の時はスコアを更新させない
+    return null;
+  }
+}
+return result;

@@ -1,0 +1,195 @@
+{
+  "usecases": [
+    {
+      "actor": "ドライバー(未ログイン)",
+      "trigger": "アプリ起動 or ログアウト直後にオープニング画面から『ログイン』を押下",
+      "main_flow": [
+        "オープニング画面で ID/PASSWORD を入力するダイアログを表示",
+        "PASSWORD を Md5.hashStr でハッシュ化し loginService.login(id, hashedPw) を呼ぶ",
+        "UserDbService.selectUser で SQLite users テーブルを照合",
+        "成功時は environment.loginKey に {timestamp,userId,userPassword} を保存しページをログイン済み表示に切替",
+        "直近スコア(scoreDb.selectLastScore)から over_all メッセージを取得し %COUNT 置換して表示",
+        "失敗時はログイン失敗ダイアログを表示"
+      ],
+      "outputs": [
+        "ログイン状態",
+        "loginKey に保存されたトークン",
+        "オープニング画面上の直近運転診断コメント"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "ドライバー(継続利用者)",
+      "trigger": "前回ログインから72時間以内にアプリを起動",
+      "main_flow": [
+        "ngOnInit で loginService.autoLogin() を実行",
+        "environment.loginKey のタイムスタンプが 3 日以内なら保存済み ID/パスワードで再ログイン",
+        "成功時はオープニングをログイン済み表示に切替",
+        "期限切れ・失敗時は未ログイン状態のままオープニングを表示"
+      ],
+      "outputs": [
+        "自動ログイン状態",
+        "ログイン済みメニュー表示"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "未登録ドライバー",
+      "trigger": "オープニング画面から『アカウント作成』を押下",
+      "main_flow": [
+        "アカウント画面(type=create)へ遷移し ID(英数20文字)/PASSWORD(記号込30文字)/性別/生年月(1900-2020,1-12)/身長/都道府県(47)をフォーム入力",
+        "『作成』押下でバリデーション後 Md5.hashStr でパスワードをハッシュ化",
+        "loginService.insert(user) が userDb.insertUser を呼び users テーブルへ挿入",
+        "成功時は作成成功ダイアログを表示、logout()してオープニングへ戻る",
+        "失敗時は作成失敗ダイアログを表示"
+      ],
+      "outputs": [
+        "users テーブルに新規レコード",
+        "オープニング画面(未ログイン状態)への遷移"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "登録済みドライバー",
+      "trigger": "オープニング画面から『アカウント編集』を押下 or 『アカウント削除』確認",
+      "main_flow": [
+        "アカウント画面(type=modify)へ遷移し既存値を初期表示(パスワード欄は **** 伏字4文字)",
+        "更新時: 変更されていれば MD5 化して loginService.update() → userDb.updateUser、変更なしなら既存値を維持",
+        "成功で更新成功ダイアログ→logout→オープニングへ",
+        "削除時: 削除確認ダイアログで承認後 loginService.delete(userId) と scoreDbService.delete(userId) で全テーブルからユーザーとスコア履歴を除去→ダイアログ→オープニングへ"
+      ],
+      "outputs": [
+        "users テーブル更新 or 削除",
+        "score/score_history/capability_score のユーザー分削除",
+        "ログアウト状態"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "ドライバー(ログイン済み)",
+      "trigger": "オープニング→『運転診断』でドライビング画面に遷移し『診断開始』を押下",
+      "main_flow": [
+        "sensorService.start(callback) で GPS/加速度/ジャイロ/磁力/BLE(CAN) を購読開始",
+        "SensorManager.initializeCalibration() → 100msスキップ + 1000ms分の平均で姿勢オフセットを確定",
+        "scoreLogic.start(scoreLogicInterval, callback) が Storage の scoreLogic(JS)を new Function で動的評価しながら 300ms 周期で実行",
+        "駐車判定/中高速直進エントロピー/Jerk-LPF ヒヤリ判定によって score1..4 と scoreA/B/C を算出、走行内平均で over_all を更新",
+        "地図上に自車位置・軌跡・ヒヤリマーカーを描画、4指標＋総合スコアを星または順位で更新",
+        "MediaRecorder(webm) が 60秒毎に file.writeFile('movie.webm', {append:true}) で追記録画(recording=true時)",
+        "『診断終了』押下で scoreLogic.stop() → sensorService.stopScoreLogic → stopVideo",
+        "scoreDbService.insertScore(scoreLogic) で 1000 レコード刻みに score/score_history/capability_score をバルク保存",
+        "loginService.scoreId=startTimestamp を保存し終了ダイアログ→オープニング画面へ復帰"
+      ],
+      "outputs": [
+        "score/score_history/capability_score の新規行",
+        "外部ストレージ上の movie.webm と scoreLogic スナップショット",
+        "運転診断コメント/ヒヤリ地点マーカー"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "ドライバー(ログイン済み)",
+      "trigger": "運転診断終了ダイアログの『アドバイス表示』or オープニングの直近コメントリンクから /comment を開く",
+      "main_flow": [
+        "scoreDbService.selectScore(loginService.scoreId) で直近走行の Score を取得",
+        "over_all/score1..4 × positive/negative の 5×2 マトリクスで各代表 message を選出(positive=最高, negative=最低スコア)",
+        "同一 id 出現数を %COUNT に、交差点名を %INTERSECTION に置換",
+        "orderOfMessage 設定(0=pos→neg, 1=neg→pos)に従い joinMessage で改行連結",
+        "scoreShowStarArea1/2 に応じてスコアを星または順位(101-score)で表示"
+      ],
+      "outputs": [
+        "総合コメント/各項目コメント表示"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "ドライバー(ログイン済み)",
+      "trigger": "運転診断終了画面 or 地図上のヒヤリマーカータップで /bad-spot/:path に遷移",
+      "main_flow": [
+        "ルートパラメータから動画パス(@区切り→/復元)を復元",
+        "MapService.createMap で地図と S/E マーカーを描画、300ms 周期で videoElement.currentTime を監視",
+        "現在時刻を超えない最大 videoTime のマーカーを線形走査で選び追尾(spotPos/spotTimestamp/spotComment1..4 を更新)",
+        "前/次ボタンでヒヤリ地点をリング状に切替し hiyar_big.png で選択強調 + seekVideo() で動画位置を該当ヒヤリ地点に同期"
+      ],
+      "outputs": [
+        "選択ヒヤリ地点の日時/交差点/コメント表示",
+        "同期動画再生"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "ドライバー",
+      "trigger": "オープニング→『過去の診断結果』でヒストリー画面を開く",
+      "main_flow": [
+        "scoreDbService.selectAllScore() で全走行の Score を取得",
+        "直近 30 件を unshift で古い順に整列、settings.scoreShowStar によりスコア/順位を切替",
+        "Chart.js で lineChart1(総合) と lineChart2(4指標) を描画、Tooltip に positive/negative 回数と代表コメントを表示",
+        "能力指標タブ切替時は graphCapabilityScoreList を集計、capabilityScoreTargetDays 日以内で scoreA/B/C の総合スコアを算出しサブグラフを描画"
+      ],
+      "outputs": [
+        "ヒストリー折れ線グラフ",
+        "総合/項目別/能力指標コメント表示"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運用担当者(社内配布)",
+      "trigger": "設定画面でスコアロジックJS or メッセージJSON の『アプリを更新』を押下",
+      "main_flow": [
+        "端末のファイル管理経由で対象ファイルを選択",
+        "XMLHttpRequest で内容を読み込み、JSONは settings/messages 必須項目を検証、JSはロジック先頭の //<UnixTime> が現行より新しい場合のみ採用しつつ ScoreLogic.testScoreLogic() で試験実行",
+        "検証成功で storage.set(environment.scoreLogicKey/scoreLogicJsonKey) を上書き、loginService.initialize() を再実行して settings/label/scoreLogicInterval/capabilityScoreTargetDays/scoreShowStar を反映",
+        "検証失敗時はエラー行数入りの失敗ダイアログを表示",
+        "『端末にコピー』では現行の scoreLogic/JSON を Documents/driving-score/ 配下に日時付ファイル名で書き出し"
+      ],
+      "outputs": [
+        "Ionic Storage 上の scoreLogicKey / scoreLogicJsonKey 更新",
+        "端末外部ストレージへの日時付スナップショット"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "開発者/検証担当",
+      "trigger": "ブラウザで /edit 画面を開き、gz センサログと webm 動画をアップロード",
+      "main_flow": [
+        "ファイル名昇順で並べ、gz は DemoData.pushSensorLogFile()、webm は DemoData.movieFile→loadVideo に流し込む",
+        "onScoreLogicPlay で SensorManager.initializeCalibration→10ms 周期の setInterval が DemoData.getSensorLogData を消費、videoElement.currentTime を videoTime に同期",
+        "scoreLogic.start が 300ms 毎に動的スクリプトを実行、Chart.js に GRAPH_SIZE=1200 の固定長で GPS/加速度/ジャイロ/磁力/CAN/scoreAll/score1..4/scoreA..C/hiyari をプロット",
+        "onSaveScoreLogic は testScoreLogic 実行→先頭に //<epoch> と //<YYYY-MM-DD HH:MM:SS> のヘッダを差し込み Storage 保存、ブラウザではダウンロードも実行"
+      ],
+      "outputs": [
+        "編集済み scoreLogic の Storage 保存",
+        "ダウンロードファイル",
+        "多変量チャートの可視化"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "運用担当者",
+      "trigger": "端末で発生した不具合の解析、または実走行データの後追い分析",
+      "main_flow": [
+        "設定画面で『アプリログを端末に保存』『センサーログを端末に保存』を ON",
+        "LogService.debug/error/sensor がバッファに追記、3MB(通常) / 5MB(センサ) 到達で pako.gzip → file.writeFile で Documents/driving-score/[debug-log|セッション名]/ に log.YYYYMMDD-HHMMSS.txt.gz / sensor-log.....txt.gz を書き出す",
+        "run 中は setLogDir(name) でセッションごとのサブディレクトリに切替、走行終了時に resetLogDir で既定ディレクトリへ戻す"
+      ],
+      "outputs": [
+        "外部ストレージ上の gzip 圧縮ログファイル群"
+      ],
+      "confidence": "high"
+    },
+    {
+      "actor": "社内開発者",
+      "trigger": "配布パッケージ(install-windows.bat / install-mac.sh)を実行",
+      "main_flow": [
+        "java17 / adb / node の存在確認",
+        "デスクトップ配下に driving-score をコピー(Windows は mklink /D の管理者権限が必要)",
+        "npm install → ionic cap sync → ionic build → npx cap add android → ionic capacitor build android を順次実行",
+        "npm install 失敗時は npm registry を http/strict-ssl false にフォールバックしてリトライ"
+      ],
+      "outputs": [
+        "ビルド済み Android プロジェクト",
+        "配布可能なアプリバイナリ"
+      ],
+      "confidence": "high"
+    }
+  ]
+}

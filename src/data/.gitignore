@@ -1,0 +1,49 @@
+# Node
+node_modules/
+
+# Angular build & cache
+/dist
+/www
+/.angular/
+/tmp
+/out-tsc
+/bazel-out
+/coverage
+
+# IDE / editor
+.idea/
+.vscode/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Ionic / Cordova
+.sourcemaps/
+
+# Android (Gradle)
+android/.gradle/
+android/build/
+android/app/build/
+android/app/release/
+android/local.properties
+android/local.properties.release
+android/captures/
+android/*.iml
+android/app/*.iml
+
+# Capacitor sync output that lives inside android/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# Google Maps API keys (供給は environment.secrets.ts.example を参照)
+src/environments/environment.secrets.ts
+src/environments/environment.prod.secrets.ts
+
+# Rescue backups from the reverse-engineering handover
+android.old/
+android.reverse-engineered-backup/
+
+# Logs
+*.log

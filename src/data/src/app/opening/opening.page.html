@@ -1,0 +1,36 @@
+<ion-content>
+  <ion-grid>
+    <ion-row>
+      <ion-col>
+        <h1>運転診断アプリ</h1>
+      </ion-col>
+    </ion-row>
+    <ion-row *ngIf="loginStatus">
+      <ion-col>
+        <ion-button color="primary" (click)="onDrivingClick()" >運転診断</ion-button>
+      </ion-col>
+    </ion-row>
+    <ion-row *ngIf="!loginStatus">
+      <ion-col>
+        <ion-button color="primary" (click)="onLoginClick()">ログイン</ion-button>
+      </ion-col>
+    </ion-row>
+    <ion-row>
+      <ion-col>
+        <ion-button *ngIf="!loginStatus" color="secondary" (click)="onAccountCreateClick()" class="button-margin">アカウント作成</ion-button>
+        <ion-button *ngIf="loginStatus" color="secondary" (click)="onAccountModifyClick()" class="button-margin">アカウント編集</ion-button>
+      </ion-col>
+    </ion-row>
+    <ion-row>
+      <ion-col>
+        <ion-button color="secondary" (click)="onSettingsClick()">設定</ion-button>
+      </ion-col>
+    </ion-row>
+    <ion-row *ngIf="loginStatus">
+      <ion-col>
+        <ion-button color="secondary" (click)="onLogoutClick()">ログアウト</ion-button>
+      </ion-col>
+    </ion-row>
+  </ion-grid>
+
+</ion-content>

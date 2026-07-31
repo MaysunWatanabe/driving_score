@@ -1,0 +1,122 @@
+<ion-header class="{{cssHeader}}">
+  <ion-toolbar>
+    <div class="back">
+      <ion-back-button color="secondary" defaultHref="opening" text=""></ion-back-button>
+    </div>
+    <div class="history" *ngIf="status != 1">
+      <ion-button color="secondary" (click)="onHistory()" size="small">過去の診断結果</ion-button>
+    </div>
+    <div class="recording" *ngIf="status == 1 && recording">[◉REC]</div>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true">
+
+  <div #map id="map" class="{{cssMap}}"></div>
+
+  <div class="{{cssPointer}}">
+    <img src="assets/images/pointer.png" (click)="onPointer()">
+  </div>
+
+  <div class="{{cssStart}}">
+    <ion-button color="primary" *ngIf="status != 1" (click)="onStart()">診断開始</ion-button>
+    <ion-button color="primary" *ngIf="status == 1" (click)="onStop()">診断終了</ion-button>
+  </div>
+
+  <ion-grid class="{{cssScore}}" (click)="onScore()">
+    <ion-row *ngIf="label1 != ''">
+      <ion-col><div class="title_center">{{label1}}</div></ion-col>
+    </ion-row>
+    <ion-row *ngIf="label1 != ''">
+      <ion-col *ngIf="scoreShowStarArea1"><div class="score_root">
+        <div class="score"><div class="score_child" style="width:{{(score1 -  0 < 0 ? 0 : score1 -  0) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score1 - 20 < 0 ? 0 : score1 - 20) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score1 - 40 < 0 ? 0 : score1 - 40) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score1 - 60 < 0 ? 0 : score1 - 60) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score1 - 80 < 0 ? 0 : score1 - 80) * 5}}%">★</div>☆</div>
+      </div></ion-col>
+      <ion-col *ngIf="!scoreShowStarArea1" class="flex">
+        <div class="rank_div"></div>
+        <div class="font_score_text">{{score1Text}}位</div>
+        <div class="rank_div font_score_text2">&nbsp;(100人中)</div>
+      </ion-col>
+    </ion-row>
+
+    <ion-row *ngIf="label2 != ''">
+      <ion-col><div class="title_center">{{label2}}</div></ion-col>
+    </ion-row>
+    <ion-row *ngIf="label2 != ''">
+      <ion-col *ngIf="scoreShowStarArea1"><div class="score_root">
+        <div class="score"><div class="score_child" style="width:{{(score2 -  0 < 0 ? 0 : score2 -  0) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score2 - 20 < 0 ? 0 : score2 - 20) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score2 - 40 < 0 ? 0 : score2 - 40) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score2 - 60 < 0 ? 0 : score2 - 60) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score2 - 80 < 0 ? 0 : score2 - 80) * 5}}%">★</div>☆</div>
+      </div></ion-col>
+      <ion-col *ngIf="!scoreShowStarArea1" class="flex">
+        <div class="rank_div"></div>
+        <div class="font_score_text">{{score2Text}}位</div>
+        <div class="rank_div font_score_text2">&nbsp;(100人中)</div>
+      </ion-col>
+    </ion-row>
+
+    <ion-row *ngIf="label3 != ''">
+      <ion-col><div class="title_center">{{label3}}</div></ion-col>
+    </ion-row>
+    <ion-row *ngIf="label3 != ''">
+      <ion-col *ngIf="scoreShowStarArea1"><div class="score_root">
+        <div class="score"><div class="score_child" style="width:{{(score3 -  0 < 0 ? 0 : score3 -  0) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score3 - 20 < 0 ? 0 : score3 - 20) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score3 - 40 < 0 ? 0 : score3 - 40) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score3 - 60 < 0 ? 0 : score3 - 60) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score3 - 80 < 0 ? 0 : score3 - 80) * 5}}%">★</div>☆</div>
+      </div></ion-col>
+      <ion-col *ngIf="!scoreShowStarArea1" class="flex">
+        <div class="rank_div"></div>
+        <div class="font_score_text">{{score3Text}}位</div>
+        <div class="rank_div font_score_text2">&nbsp;(100人中)</div>
+      </ion-col>
+    </ion-row>
+
+    <ion-row *ngIf="label4 != ''">
+      <ion-col><div class="title_center">{{label4}}</div></ion-col>
+    </ion-row>
+    <ion-row *ngIf="label4 != ''">
+      <ion-col *ngIf="scoreShowStarArea1"><div class="score_root">
+        <div class="score"><div class="score_child" style="width:{{(score4 -  0 < 0 ? 0 : score4 -  0) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score4 - 20 < 0 ? 0 : score4 - 20) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score4 - 40 < 0 ? 0 : score4 - 40) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score4 - 60 < 0 ? 0 : score4 - 60) * 5}}%">★</div>☆</div>
+        <div class="score"><div class="score_child" style="width:{{(score4 - 80 < 0 ? 0 : score4 - 80) * 5}}%">★</div>☆</div>
+      </div></ion-col>
+      <ion-col *ngIf="!scoreShowStarArea1" class="flex">
+        <div class="rank_div"></div>
+        <div class="font_score_text">{{score4Text}}位</div>
+        <div class="rank_div font_score_text2">&nbsp;(100人中)</div>
+      </ion-col>
+    </ion-row>
+
+    <ion-row>
+      <ion-col><div class="over_all_title">総合スコア</div></ion-col>
+    </ion-row>
+    <ion-row>
+      <ion-col *ngIf="scoreShowStarArea2">
+        <div class="over_all_score_star_root">
+          <div class="over_all_score_star"><div class="star_child" style="width:{{(scoreAll -  0 < 0 ? 0 : scoreAll -  0) * 5}}%">★</div>☆</div>
+          <div class="over_all_score_star"><div class="star_child" style="width:{{(scoreAll - 20 < 0 ? 0 : scoreAll - 20) * 5}}%">★</div>☆</div>
+          <div class="over_all_score_star"><div class="star_child" style="width:{{(scoreAll - 40 < 0 ? 0 : scoreAll - 40) * 5}}%">★</div>☆</div>
+          <div class="over_all_score_star"><div class="star_child" style="width:{{(scoreAll - 60 < 0 ? 0 : scoreAll - 60) * 5}}%">★</div>☆</div>
+          <div class="over_all_score_star"><div class="star_child" style="width:{{(scoreAll - 80 < 0 ? 0 : scoreAll - 80) * 5}}%">★</div>☆</div>
+        </div>
+      </ion-col>
+      <ion-col *ngIf="!scoreShowStarArea2">
+        <div *ngIf="!scoreShowStarArea2" class="flex">
+          <div class="rank_div"></div>
+          <div class="font_over_all_score_text">{{scoreAllText}}位</div>
+          <div class="rank_div font_over_all_score_text2">&nbsp;(100人中)</div>
+        </div>
+      </ion-col>
+    </ion-row>
+  </ion-grid>
+
+</ion-content>

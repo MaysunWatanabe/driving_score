@@ -1,0 +1,172 @@
+# ProjectSmith proposal #584 (auto_b) 準拠の CI パイプライン。
+# - スコープ: 基盤のみ (install / lint / build / 既存 unit spec / gradle assembleDebug)
+# - Node は src/data/.nvmrc に固定 (18.19.1)
+# - Karma は ChromeHeadlessCI (--no-sandbox) で headless 実行
+# - Android は android-actions/setup-android@v3 + Java 17
+# - Google Maps API key は GitHub Secrets の GOOGLE_MAPS_API_KEY_DEV から注入し、
+#   未設定 (fork PR 等) は REPLACE_ME フォールバック (build は通るが地図初期化は失敗)
+# - APK / coverage は actions/upload-artifact で 14 日保管
+# - BLE emulator は CI 対象外 (fact #4578 と proposal #584 の合意による)
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: src/data
+
+jobs:
+  build-web:
+    name: build + lint (web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: src/data/.nvmrc
+          cache: npm
+          cache-dependency-path: src/data/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      # environment.secrets.ts は .gitignore 済み。CI ビルドを通すためテンプレを
+      # そのままリネームして配置する (mapsKey は "REPLACE_WITH_..." のダミー)。
+      # Web の地図は実キーが必要だが、本 job は build 通過確認が目的。
+      - name: Materialize environment secrets (dummy from templates)
+        run: |
+          cp src/environments/environment.secrets.ts.example src/environments/environment.secrets.ts
+          cp src/environments/environment.prod.secrets.ts.example src/environments/environment.prod.secrets.ts
+
+      - name: Lint
+        run: npx ng lint
+
+      - name: Build (development)
+        run: npx ng build --configuration development
+
+      - name: Build (production)
+        run: npx ng build --configuration production
+
+  unit-test:
+    name: unit test (karma headless)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: src/data/.nvmrc
+          cache: npm
+          cache-dependency-path: src/data/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Materialize environment secrets (dummy from templates)
+        run: |
+          cp src/environments/environment.secrets.ts.example src/environments/environment.secrets.ts
+          cp src/environments/environment.prod.secrets.ts.example src/environments/environment.prod.secrets.ts
+
+      - name: Karma (ChromeHeadlessCI)
+        run: npx ng test --watch=false --browsers=ChromeHeadlessCI --code-coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage-report
+          path: src/data/coverage
+          retention-days: 14
+
+  android-build:
+    name: android assembleDebug
+    runs-on: ubuntu-latest
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: src/data/.nvmrc
+          cache: npm
+          cache-dependency-path: src/data/package-lock.json
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-33 build-tools;33.0.2'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Materialize environment secrets (dummy from templates)
+        run: |
+          cp src/environments/environment.secrets.ts.example src/environments/environment.secrets.ts
+          cp src/environments/environment.prod.secrets.ts.example src/environments/environment.prod.secrets.ts
+
+      # ProjectSmith proposal #586 (B): assembleDebug は Web bundle も
+      # --configuration development にペアリングして、dev secrets
+      # (environment.secrets.ts) の dev キーを埋め込む。release APK を
+      # 別途 CI に足す場合は --configuration production + assembleRelease。
+      - name: Build web (development)
+        run: npx ng build --configuration development
+
+      - name: Capacitor sync (android)
+        run: npx cap sync android
+
+      # proposal #584 (B): GitHub Secrets から実キー (または CI 用非本番キー) を
+      # local.properties に注入する。secret 未設定 (fork PR / 未登録) は
+      # REPLACE_ME フォールバックで build を通す。地図初期化は失敗するが
+      # APK 生成の成立性は担保できる。
+      - name: Write android/local.properties (with GMaps key)
+        working-directory: src/data/android
+        env:
+          GMAPS_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY_DEV }}
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          if [ -n "$GMAPS_KEY" ]; then
+            echo "GOOGLE_MAPS_API_KEY=$GMAPS_KEY" >> local.properties
+            echo "::notice::GOOGLE_MAPS_API_KEY_DEV secret injected"
+          else
+            echo "GOOGLE_MAPS_API_KEY=REPLACE_ME" >> local.properties
+            echo "::warning::GOOGLE_MAPS_API_KEY_DEV secret not set (fork PR or unconfigured); using REPLACE_ME"
+          fi
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('src/data/android/**/*.gradle*', 'src/data/android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Gradle assembleDebug
+        working-directory: src/data/android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: src/data/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14

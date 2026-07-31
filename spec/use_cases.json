@@ -1,0 +1,74 @@
+[
+  {
+    "name": "ドライバー(未ログイン): オープニングからログイン",
+    "description": "アプリ起動 or ログアウト直後にオープニング画面から『ログイン』ボタンを押下し、ID/PASSWORD でログインする。成功時は直近スコアの over_all メッセージを表示する。",
+    "status": "",
+    "sort_order": 1
+  },
+  {
+    "name": "ドライバー(継続利用): 自動ログイン",
+    "description": "前回ログインから 3 日 (72 時間) 以内なら、オープニング画面初期化時に自動ログインが成功し、そのままログイン済み状態で操作できる。",
+    "status": "",
+    "sort_order": 2
+  },
+  {
+    "name": "未登録ドライバー: アカウント作成",
+    "description": "オープニングから『アカウント作成』を押下し、ID/PASSWORD/性別/生年月/身長/都道府県 を入力してユーザーを登録する。作成後は自動的にログアウトしてオープニングに戻る。",
+    "status": "",
+    "sort_order": 3
+  },
+  {
+    "name": "登録済みドライバー: アカウント編集",
+    "description": "オープニングから『アカウント編集』を押下し、ログイン中のユーザー情報を編集する。パスワード欄が '****' のままなら現行維持、変更されていれば MD5 ハッシュで保存する。",
+    "status": "",
+    "sort_order": 4
+  },
+  {
+    "name": "登録済みドライバー: アカウント削除",
+    "description": "アカウント編集画面から削除を選択し、user/score/score_history/capability_score のユーザー単位レコードを削除する。確認ダイアログで最終確認する。",
+    "status": "",
+    "sort_order": 5
+  },
+  {
+    "name": "ログイン済みドライバー: 運転診断の実行",
+    "description": "オープニングから『運転診断』でドライビング画面に遷移し、『診断開始』でセンサーサービス・スコアロジック・録画を起動、走行終了で SQLite に結果を保存する。",
+    "status": "",
+    "sort_order": 6
+  },
+  {
+    "name": "ログイン済みドライバー: アドバイス表示",
+    "description": "運転診断終了ダイアログの『アドバイス表示』またはオープニングの直近コメントから /comment を開き、直近 1 走行の over_all/score1..4 × positive/negative の代表メッセージを閲覧する。",
+    "status": "",
+    "sort_order": 7
+  },
+  {
+    "name": "ログイン済みドライバー: ヒヤリ地点確認",
+    "description": "運転診断終了画面の地図上、または /comment 経由でヒヤリマーカーをタップし /bad-spot/:path に遷移。動画と地図で 1 点ずつヒヤリ地点を確認する。",
+    "status": "",
+    "sort_order": 8
+  },
+  {
+    "name": "ドライバー: 過去の診断結果閲覧",
+    "description": "オープニングから『過去の診断結果』でヒストリー画面を開き、直近 30 回分のスコア推移と、能力指標タブ(過去 N 日平均)を Chart.js で確認する。",
+    "status": "",
+    "sort_order": 9
+  },
+  {
+    "name": "運用担当者: スコアロジック/辞書の更新",
+    "description": "設定画面から scoreLogic.txt / scoreLogic.json を端末上のファイルからアップロードし、testScoreLogic による検証後に Storage を更新する。または現在の内容をファイルとして書き出す。",
+    "status": "",
+    "sort_order": 10
+  },
+  {
+    "name": "運用担当者: センサーモード切替",
+    "description": "設定画面でセンサーモード (smartphoneOnly / canDataOnly / combination) と各種フラグ (録画/GPSデモ/ログ保存/センサログ保存) を切替、Storage に永続化する。",
+    "status": "",
+    "sort_order": 11
+  },
+  {
+    "name": "開発者/検証担当: スコアロジック編集とデモ再生",
+    "description": "ブラウザで /edit 画面を開き、gz センサログと webm 動画をアップロードして DemoData 再生。エディタで ScoreLogic を編集し testScoreLogic で試験実行、成功時は先頭に //<UnixTime> と //<日付> を差し込んで保存する。",
+    "status": "",
+    "sort_order": 12
+  }
+]

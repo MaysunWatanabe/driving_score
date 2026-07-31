@@ -1,0 +1,142 @@
+<ion-header>
+  <ion-toolbar>
+    <div class="back">
+      <ion-back-button color="secondary" defaultHref="opening" text=""></ion-back-button>
+    </div>
+    <div class="header_title">過去の診断結果</div>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [scrollEvents]="true">
+  <ion-card [hidden]="selectCapabilityTab">
+    <ion-card-header>
+      運転診断スコアの推移
+    </ion-card-header>
+    <ion-card-content>
+      <div class="canvas_frame">
+        <canvas #lineCanvas1 id="lineCanvas1"></canvas>
+      </div>
+      <div class="comment_title">コメント</div>
+      <div class="comment">{{comment11}}<br/>{{comment12}}</div>
+    </ion-card-content>
+  </ion-card>
+
+  <ion-card [hidden]="selectCapabilityTab">
+    <ion-card-header>
+      項目別
+    </ion-card-header>
+    <ion-card-content>
+      <div class="canvas_frame2">
+        <canvas #lineCanvas2 id="lineCanvas2"></canvas>
+      </div>
+      <div class="comment_title">コメント</div>
+      <div class="comment">{{comment21}}<br/>{{comment22}}</div>
+    </ion-card-content>
+  </ion-card>
+
+  <ion-card [hidden]="!selectCapabilityTab" *ngIf="labelA !== ''">
+    <ion-card-header (mouseover)="onMouseOver()">
+      {{labelA}}
+    </ion-card-header>
+    <ion-card-content>
+      <!--
+      <div *ngIf="!scoreShowStarArea3" class="overall_score">総合スコア： {{scoreA.toFixed(0)}}点</div>
+      -->
+      <div *ngIf="!scoreShowStarArea3" class="overall_score">総合スコア： <span>{{rankScoreA}}位</span><span class="font-weight-normal">（100人中）</span></div>
+      <div *ngIf="scoreShowStarArea3" class="overall_score_star">総合スコア：
+        <div class="star"><div class="star_child" style="width:{{(scoreA -  0 < 0 ? 0 : scoreA -  0) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreA - 20 < 0 ? 0 : scoreA - 20) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreA - 40 < 0 ? 0 : scoreA - 40) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreA - 60 < 0 ? 0 : scoreA - 60) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreA - 80 < 0 ? 0 : scoreA - 80) * 5}}%">★</div>☆</div>
+      </div>
+      <div class="canvas_frame">
+        <canvas #lineCanvas3 id="lineCanvas3"></canvas>
+      </div>
+      <div class="sub_canvas_frame" [hidden]="selectLineCanvasId !== 'lineCanvas3_2'">
+        <div class="font-small">({{subGraphDateText}}の能力指標が複数あります)</div>
+        <canvas #lineCanvas3_2 id="lineCanvas3_2"></canvas>
+      </div>
+      <div (mouseover)="onMouseOver()">
+        <div class="comment_title">コメント</div>
+        <div class="comment">{{scoreAMessage}}</div>
+      </div>
+    </ion-card-content>
+  </ion-card>
+
+  <ion-card [hidden]="!selectCapabilityTab" *ngIf="labelB !== ''">
+    <ion-card-header (mouseover)="onMouseOver()">
+      {{labelB}}
+    </ion-card-header>
+    <ion-card-content>
+      <!--
+      <div *ngIf="!scoreShowStarArea3" class="overall_score">総合スコア： {{scoreB.toFixed(0)}}点</div>
+      -->
+      <div *ngIf="!scoreShowStarArea3" class="overall_score">総合スコア： <span>{{rankScoreB}}位</span><span class="font-weight-normal">（100人中）</span></div>
+      <div *ngIf="scoreShowStarArea3" class="overall_score_star">総合スコア：
+        <div class="star"><div class="star_child" style="width:{{(scoreB -  0 < 0 ? 0 : scoreB -  0) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreB - 20 < 0 ? 0 : scoreB - 20) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreB - 40 < 0 ? 0 : scoreB - 40) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreB - 60 < 0 ? 0 : scoreB - 60) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreB - 80 < 0 ? 0 : scoreB - 80) * 5}}%">★</div>☆</div>
+      </div>
+      <div class="canvas_frame">
+        <canvas #lineCanvas4 id="lineCanvas4"></canvas>
+      </div>
+      <div class="sub_canvas_frame" [hidden]="selectLineCanvasId !== 'lineCanvas4_2'">
+        <div class="font-small">({{subGraphDateText}}の能力指標が複数あります)</div>
+        <canvas #lineCanvas4_2 id="lineCanvas4_2"></canvas>
+      </div>
+      <div (mouseover)="onMouseOver()">
+        <div class="comment_title">コメント</div>
+        <div class="comment">{{scoreBMessage}}</div>
+      </div>
+    </ion-card-content>
+  </ion-card>
+
+  <ion-card [hidden]="!selectCapabilityTab" *ngIf="labelC !== ''">
+    <ion-card-header (mouseover)="onMouseOver()">
+      {{labelC}}
+    </ion-card-header>
+    <ion-card-content>
+      <!--
+      <div *ngIf="!scoreShowStarArea3" class="overall_score">総合スコア： {{scoreC.toFixed(0)}}点</div>
+      -->
+      <div *ngIf="!scoreShowStarArea3" class="overall_score">総合スコア： <span>{{rankScoreC}}位</span><span class="font-weight-normal">（100人中）</span></div>
+      <div *ngIf="scoreShowStarArea3" class="overall_score_star">総合スコア：
+        <div class="star"><div class="star_child" style="width:{{(scoreC -  0 < 0 ? 0 : scoreC -  0) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreC - 20 < 0 ? 0 : scoreC - 20) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreC - 40 < 0 ? 0 : scoreC - 40) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreC - 60 < 0 ? 0 : scoreC - 60) * 5}}%">★</div>☆</div>
+        <div class="star"><div class="star_child" style="width:{{(scoreC - 80 < 0 ? 0 : scoreC - 80) * 5}}%">★</div>☆</div>
+      </div>
+      <div class="canvas_frame">
+        <canvas #lineCanvas5 id="lineCanvas5"></canvas>
+      </div>
+      <div class="sub_canvas_frame" [hidden]="selectLineCanvasId !== 'lineCanvas5_2'">
+        <div class="font-small">({{subGraphDateText}}の能力指標が複数あります)</div>
+        <canvas #lineCanvas5_2 id="lineCanvas5_2"></canvas>
+      </div>
+      <div (mouseover)="onMouseOver()">
+        <div class="comment_title">コメント</div>
+        <div class="comment">{{scoreCMessage}}</div>
+      </div>
+    </ion-card-content>
+  </ion-card>
+
+  <ion-card [hidden]="!selectCapabilityTab">
+    <ion-card-content class="font-small">
+      ※能力値指標の総合スコアは、過去{{capabilityScoreTargetDays}}日の平均値です
+    </ion-card-content>
+  </ion-card>
+</ion-content>
+<ion-footer>
+  <ion-toolbar>
+    <ion-buttons slot="secondary">
+      <ion-button *ngIf="!selectCapabilityTab" color="secondary" fill="solid" class="button-margin">運転診断スコア</ion-button>
+      <ion-button *ngIf="!selectCapabilityTab" color="light" fill="solid" (click)="onCapabilityClick()" class="button-margin">能力指標</ion-button>
+      <ion-button *ngIf="selectCapabilityTab" color="light" fill="solid" (click)="onHistoryClick()" class="button-margin">運転診断スコア</ion-button>
+      <ion-button *ngIf="selectCapabilityTab" color="secondary" fill="solid" class="button-margin">能力指標</ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-footer>

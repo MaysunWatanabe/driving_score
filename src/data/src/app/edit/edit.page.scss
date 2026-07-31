@@ -1,0 +1,166 @@
+ion-content::part(scroll) {
+  overflow-y: auto !important;
+}
+
+ion-grid {
+  width: 1050px;
+  font-size: 0.9em;
+}
+
+.header_title {
+  font-weight: bold;
+  font-size: 1.2em;
+  color: var(--ion-color-primary);
+  text-align: center;
+  height:40px;
+}
+
+.text_area {
+  border: solid 1px gray;
+  margin: 10px;
+}
+
+.score_logic {
+  font-size: 1.2em;
+}
+
+.button_area {
+  text-align: center;
+  margin-top: 10px;
+}
+
+.button_style {
+  width: 115px;
+  height: 35px;
+  font-size: 0.8em;
+}
+
+.red {
+  color: red;
+}
+
+.blue {
+  color: blue;
+}
+
+.gray {
+  color: gray;
+}
+
+.green {
+  color: green;
+}
+
+.bold {
+  font-weight: bold;
+}
+
+.right {
+  text-align:right;
+}
+
+.left {
+  text-align:left;
+}
+
+ion-range::part(pin) {
+  white-space: nowrap;
+  border-radius: 10%;
+  padding: 4px 0px;
+  min-width: 100px;
+  left: -32px;
+}
+
+.range {
+  padding-top: 2px;
+}
+
+.range_input_area {
+  font-size: 0.8em;
+  color: gray;
+}
+
+.range_input {
+  height: 16px;
+}
+
+.control {
+  width: 23px;
+  height: 23px;
+}
+
+.score_logic_result {
+  text-align:left;
+  height: 230px;
+  border: solid 1px #DDDDDD;
+  margin-bottom: 3px;
+}
+
+.score_logic_range {
+  font-weight: bold;
+  border: solid 1px #DDDDDD;
+  margin-bottom: 3px;
+}
+
+.score_logic_sensor {
+  text-align:left;
+  border: solid 1px #DDDDDD;
+}
+
+.score_logic_sensor_checkbox_area {
+  border-left: solid 1px #DDD;
+  border-right: solid 1px #DDD;
+  border-bottom: solid 1px #DDD;
+}
+
+.score_logic_sensor_checkbox_title {
+  text-align:center;
+  font-weight: bold;
+  border-top: solid 1px #DDD;
+  margin-top: 10px;
+  width:500px;
+}
+
+.score_logic_sensor_checkbox_title2 {
+  text-align:center;
+  font-weight: bold;
+  border-top: solid 1px #DDD;
+  width:500px;
+}
+
+.score_logic_sensor_checkbox_row {
+  margin-bottom: 15px;
+}
+
+.score_logic_message {
+  border: solid 1px #DDD;
+  margin-top: 3px;
+}
+
+.col_right ion-col {
+  text-align:right;
+}
+
+.video {
+  height:300px;
+  width:300px;
+}
+
+.video_area {
+  height:340px;
+  width:300px;
+}
+
+.canvas {
+  height: 310px;
+  width: 670px;
+}
+
+.canvas_area {
+  height: 340px;
+  width: 700px;
+}
+
+.resultText {
+  padding-right: 40px;
+}

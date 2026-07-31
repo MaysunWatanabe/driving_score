@@ -1,0 +1,49 @@
+#!/bin/bash
+# commit-msg hook:
+# drift-* ブランチへの commit に proposal #N または fact #N の参照を必須化する。
+# main / spec-recast-* / その他のブランチはチェックしない（merge / 自動 commit 等を阻害しない）。
+#
+# 配布方法: scripts/install-githooks.sh で `git config core.hooksPath .githooks` を設定する
+set -e
+
+COMMIT_MSG_FILE="$1"
+[ -z "$COMMIT_MSG_FILE" ] && exit 0
+[ ! -f "$COMMIT_MSG_FILE" ] && exit 0
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+
+# drift-* 以外のブランチではチェックしない
+case "$BRANCH" in
+  drift-*) ;;  # 続行
+  *) exit 0 ;;
+esac
+
+# Merge / Revert / fixup / squash / rebase の自動 commit はスキップ
+FIRST_LINE=$(head -1 "$COMMIT_MSG_FILE")
+case "$FIRST_LINE" in
+  "Merge "*|"Revert "*|"fixup!"*|"squash!"*|"amend!"*) exit 0 ;;
+esac
+
+# proposal #N または fact #N の参照を要求
+if ! grep -qE '(proposal|fact) #[0-9]+' "$COMMIT_MSG_FILE"; then
+  cat >&2 <<EOF
+[commit-msg hook] BLOCK
+drift-* ブランチへの commit message には proposal #<id> または fact #<id> の参照が必須です。
+
+現在ブランチ: ${BRANCH}
+commit message: $(head -3 "$COMMIT_MSG_FILE")
+
+対処:
+  - subject 行末尾または本文に追記:
+    例: "feat(ui): wheel picker 3 段階スケール (proposal #97)"
+    例: "fix(qa): E2E assertion を fact #2257 に合わせて更新"
+  - 末尾に Refs: 行を入れるのも可:
+    例: "Refs: proposal #97, fact #2257"
+
+このルールを一時的にスキップしたい場合: git commit --no-verify
+（CLAUDE.md の方針上 --no-verify は最終手段。乱用しないこと）
+EOF
+  exit 1
+fi
+
+exit 0

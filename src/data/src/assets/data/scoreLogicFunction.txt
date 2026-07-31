@@ -1,0 +1,885 @@
+//1740668400000
+//2025-02-28 00:00:00
+/*
+ * 1行目の数値は、このファイルを生成した時のUnixTimeです。
+ * 設定画面で直接編集やファイルのアップロードを行った時に更新されます。
+ * アプリをアップデートした時に、アプリに標準で入っているスコアロジックのUnixTimeが現状よりも新しい場合は更新されます。
+ * 古い場合は、アプリをアップデートしてもスコアロジックは更新しません（現状を維持します）
+ * この対応は、スコアロジックが意図せず昔のバージョンに戻ってしまうことを防ぐためです。
+ */
+/*
+■使用できる変数
+  //現在時間
+  currentTimestamp
+  //前回時間
+  lastTimestamp
+  // GPS
+  geolocationList: [ {
+    timestamp,
+    latitude,
+    longitude,
+    accuracy,
+    altitude,
+    altitudeAccuracy,
+    heading,
+    speed,
+    repeat
+  } ]
+  // 加速度センサー
+  accelerationList: [ {
+    timestamp,
+    accelerationIncludingGravity {
+      x, y, z,
+      lowPass: {
+        x, y, z
+      },
+      // 端末を縦に持った時と同じようにあるようにセンサー値を回転した値
+      rotate: {
+        x, y, z,
+        lowPass: {
+          x, y, z
+        }
+      }
+    },
+    rotationRate: { beta, gamma, alpha },
+    interval,
+    repeat
+  } ]
+  // ジャイロセンサー
+  gyroscopeList: [ {
+    timestamp,
+    beta, gamma, alpha,
+    // 端末を縦に持った時と同じようにあるようにセンサー値を回転した値
+    rotate: {
+      beta, gamma, alpha
+    },
+    repeat
+  } ]
+  // 地磁気センサー
+  magnetometerList: [ {
+    timestamp,
+    x, y, z,
+    repeat
+  } ]
+  // 車載CANデータ ※アプリの設定ページで利用するセンサー情報に「smartphoneOnly」を指定するとNULLになる
+  canDataList: [ {
+    vehicleSpeed,       //単位:km/h、0~255
+    longAcc,            //単位:G、-1.28~1.27
+    latAcc,             //単位:G、-1.28~1.27
+    frontDistance,      //単位:m、0~127
+    lateralDistance,    //単位:m、-64~63.5
+    steeringAngle,      //単位:degree、-1080~1080（L:+、R:-）
+    accelPedalPosition, //単位:%、0~100
+    brakePressure,      //単位:bar、0~126
+    brakeSwitch,        //0:OFF、1:ON
+    shiftIndication,    //1:P、2:R、3:N、4:D、6:L、7:B
+    turnSignal          //0:ウインカーOFF、1:左ウィンカーON、2:右ウィンカーON、3:左右ウィンカー（ハザード）ON
+  } ]
+  //運転診断用のコンフィグファイル（JSON）
+  scoreLogicJson: {
+    intersection: [ { lat, lon, name } ],
+    messages: [ { id, key, type, message, custom } ],
+    capability_messages: [ { id, key, type, message } ]
+  }
+  //本運転診断ロジックが返却した過去の診断結果
+  scoreLogicResultList: []
+  //何に使ってもいいテンポラリ用の連組配列
+  localData: {
+    any //運転診断中にデータが保持されれ、運転診断スコアロジック内で自由に使える変数
+  }
+
+■ログの出力方法
+  例：log.debug('[DrivingScore][ScoreLogic] intersection=' + intersection.name);
+  log.debug('デバッグログ');
+  log.error('エラーログ');
+
+■グラフ描画
+PCのブラウザで開発するときはグラフを表示することができる
+drawGraph関数の第１引数（グラフ名）ごとに線が引かれるので、複数の数値を可視化することができる
+スマートフォンのアプリで起動した時は無効になるので、プログラムコードが残っていても問題ない
+　例：drawGraph('グラフ名', 数値); //線で描画
+　例：drawGraph('グラフ名', 数値, 'line'); //線で描画
+　例：drawGraph('グラフ名', 数値, 'point'); //点で描画
+*/
+
+//一度もスコアを返却していない場合は、１度だけ100点で返却する
+if (scoreLogicResultList.length === 0) {
+  return { drivingScore: { score: {overAll: 100, score1: 100, score2: 100 } } };
+}
+
+/**
+ * ExcelのNORM.DIST関数の第４引数がFalseの確率密度関数
+ *
+ * @param {number} x - 関数に代入する値
+ * @param {number} mean - 対象となる分布の算術平均 (相加平均)
+ * @param {number} standardDev - 対象となる分布の標準偏差
+ * @returns {number} 確率密度
+ */
+const normDist = (x, mean, standardDev) => {
+  const sqrt2Pi = Math.sqrt(2 * Math.PI);
+  const exponent = -0.5 * Math.pow((x - mean) / standardDev, 2);
+  return (1 / (standardDev * sqrt2Pi)) * Math.exp(exponent);
+};
+
+/**
+ * 配列要素を先頭から調べて、repeat=0が見つかった配列要素のtimestampを返す
+ *
+ * @param {array} list - 連想配列にrepeatとtimestampを持っている変数を指定
+ * @returns {number} timestamp
+ */
+const getFirstTimestamp = (list) => {
+  for (let index = 0; index < list.length; index++) {
+    if (list[index] != null && list[index].repeat === 0) {
+      return list[index].timestamp;
+    }
+  }
+  return -1;
+};
+
+/**
+ * 指定したタイムスタンプの配列インデックスを取得
+ *
+ * @param {array} list - 連想配列にtimestampを持っている変数を指定
+ * @param {number} timestamp - タイムスタンプ
+ * @returns {number} listの配列インデックス
+ */
+const getIndex = (list, timestamp) => {
+  for (let index = list.length-1; 0 <= index; index--) {
+    if (list[index] != null
+      && list[index].repeat === 0
+      && list[index].timestamp === timestamp
+    ) {
+      return index;
+    }
+  }
+  return -1;
+};
+
+/**
+ * 基準となる配列インデックスの前の配列要素を調べ、repeat=0の配列インデックスを返す
+ *
+ * @param {array} list - 連想配列にrepeatを持っている変数を指定
+ * @param {number} currentIndex - 基準となる配列インデックス
+ * @returns {number} listの配列インデックス
+ */
+const getPreviousIndex = (list, currentIndex) => {
+  if (currentIndex < 0) {
+    return -1;
+  }
+  for (let index=currentIndex - 1; 0 <= index; index--) {
+    if (list[index] != null && list[index].repeat === 0) {
+      return index;
+    }
+  }
+  return -1;
+};
+
+/**
+ * 基準となる配列インデックスの後の配列要素を調べ、repeat=0の配列インデックスを返す
+ *
+ * @param {array} list - 連想配列にrepeatを持っている変数を指定
+ * @param {number} currentIndex - 基準となる配列インデックス
+ * @returns {number}listの配列インデックス
+ */
+const getNextIndex = (list, currentIndex) => {
+  if (currentIndex < 0) {
+    return -1;
+  }
+  for (let index=currentIndex + 1; index < list.length; index++) {
+    if (list[index] != null && list[index].repeat === 0) {
+      return index;
+    }
+  }
+  return -1;
+};
+
+/**
+ * メッセージを取得する関数
+ *
+ * @param {Object} json - scoreLogic.json
+ * @param {string} key - message.key
+ * @param {string} area - message.area
+ * @param {score} score - inclusive_min <= score && score < exclusive_max
+ * @param {string} custom - scoreLogic.jsonのmessageにあるcustomの値
+ * @returns {Object} message
+ */
+const getMessage = (json, key, area, score, custom=null) => {
+  if (score < 0) {
+    return null;
+  }
+
+  //運転診断用と能力指標用のメッセージ
+  for (let i=0; i<json.messages.length; i++) {
+    if (json.messages[i].key == key
+      && json.messages[i].area == area
+      && json.messages[i].score.inclusive_min <= score
+      && (json.messages[i].score.exclusive_max === undefined || score < json.messages[i].score.exclusive_max)
+    ) {
+      if ((custom === null && json.messages[i].custom === undefined)
+        || (custom !== null && json.messages[i].custom === custom)) {
+        return json.messages[i];
+      }
+    }
+  }
+  return null;
+};
+
+/**
+ * 指定秒数前のIndexを調べる
+ *
+ * @param {array} list - 連想配列にtimestampを持っている変数を指定
+ * @param {number} startIndex - listのどの位置から調べるかを指定
+ * @param {number} msec - startIndexの位置から何秒前のindexを探すかを指定
+ * @returns {number} 指定秒数前のtimstampを持つindex
+ */
+const searchIndex = (list, startIndex, msec) => {
+  if (list[startIndex] == null) {
+    return -1;
+  }
+  const targetTimestamp = list[startIndex].timestamp - msec;
+  let targetIndex = startIndex;
+  for (let index = startIndex; 0 <= index; index--) {
+    if (list[index] == null || list[index].repeat !== 0) {
+      continue;
+    }
+    if (targetTimestamp <= list[index].timestamp) {
+      targetIndex = index;
+    } else {
+      break;
+    }
+  }
+  return targetIndex;
+}
+
+/*
+ * 駐車行動の評価点を算出
+ *
+ * @param {array} canDataList - 車載CANデータ
+ * @param {number} startTimestamp - 計算の開始タイムスタンプ
+ * @param {number} shiftChangeTimestamp - ShiftがDからRに切り替わったタイミングのタイムスタンプ
+ * @param {number} endTimestamp - 計算の終了タイムスタンプ
+ * @returns {number} 評価点（0-100）
+ */
+const calculatorParkingScore = (canDataList, startTimestamp, shiftChangeTimestamp, endTimestamp) => {
+  //前進時の減速度，最大速度，後退時の最大加速度から　丁寧さを評価します
+  let s1 = 0; //前進時の最大減速度
+  let s2 = 0; //前進時の最大速度
+  let s3 = 0; //後退時の最大減速度
+
+  const startIndex = getIndex(canDataList, startTimestamp);
+  const shiftChangeIndex = getIndex(canDataList, shiftChangeTimestamp);
+  const endIndex = getIndex(canDataList, endTimestamp);
+
+  //R変更の8秒前から現在までのデータを使って計算する
+  for (let index = startIndex; index <= endIndex; index++) {
+    const canData = canDataList[index];
+    if (canData == null || canData.repeat !== 0) {
+      continue;
+    }
+
+    //4:D 前進
+    if (index < shiftChangeIndex && canData.shiftIndication === 4) {
+      //最大限速度
+      if (canData.longAcc < s1) {
+        //longAcc => 縦加速度。前進の加速が正の値、減速が負の値
+        s1 = canData.longAcc;
+      }
+      //最大速度
+      if (s2 < canData.vehicleSpeed) {
+        //vehicleSpeed => 車速
+        s2 = canData.vehicleSpeed;
+      }
+    }
+
+    //2:R 後退
+    if (shiftChangeIndex <= index && canData.shiftIndication === 2) {
+      //最大減速度
+      if (s3 < canData.longAcc) {
+        //longAcc => 縦加速度。後退の加速が負の値、減速が正の値
+        s3 = canData.longAcc;
+      }
+    }
+  }
+
+  //S1はR変更の8秒前からの最大減速度から算出する評価係数
+  s1 = 0.25 * normDist(s1, 0, 0.1);
+  //S2はR変更の8秒前からの最大速度から算出する評価係数
+  s2 = 25 * normDist(s2, 0, 10);
+  //S3は後退中の最大加速度から算出する評価係数
+  s3 = 0.25 * normDist(s3, 0, 0.1);
+
+  //【score1】アクセル/ブレーキ操作の丁寧さ　
+  //前進時の減速度，最大速度，後退時の最大加速度から　丁寧さを評価します
+  //評価点 = S1 × 重み係数0.57 + S2 x 重み係数0.25 + S3 x 重み係数0.18
+  const score1 = (s1 * 0.57) + (s2 * 0.25) + (s3 * 0.18);
+
+  //【scoreA】歩行機能
+  //駐車時の前後加速度，速度の大きさから，歩行機能を評価します
+  //評価点 = R変更の8秒前からの最大減速度の評価係数 × 重み係数 0.6 + 最大加速度の評価係数 x 重み係数 0.4
+  const scoreA = (s1 * 0.6) + (s3 * 0.4);
+
+  //【scoreB】認知機能
+  //駐車時の前後加速度，速度の大きさから，認知機能を評価します
+  //評価点 = R変更の8秒前からの最大減速度の評価係数 × 重み係数 0.42 + 最大速度の評価係数 x 重み係数 0.34 + 後退中の最大加速度の評価係数 x 重み係数 0.24
+  const scoreB = (s1 * 0.42) + (s2 * 0.34) + (s3 * 0.24);
+
+  //評価点は１を最大とするので、100倍した値が運転診断用のスコアになる
+  const parkingActionScore = {
+    s1: s1,
+    s2: s2,
+    s3: s3,
+    score1: score1 * 100,
+    scoreA: scoreA * 100,
+    scoreB: scoreB * 100
+  };
+  return parkingActionScore;
+};
+
+/*
+ * 駐車行動
+ *
+ * @param {Object} canDataList - 車載CANデータ
+ * @param {number} currentIndex - 計算を開始するcanDataListのインデックス
+ * @param {Object} localData - 運転診断中に好きなデータを保持するための連想配列
+ * @returns {number} 運転診断スコア（0 - 100）
+ */
+const parkingAction = (canDataList, currentIndex, localData) => {
+  //initialize
+  localData.lastShiftIndication ??= -1;
+  localData.parkingActionScoreList ??= [];
+
+  let result = null;
+  const currentCanData = canDataList[currentIndex];
+  if (currentCanData == null || currentCanData.repeat !== 0) {
+    return null;
+  }
+
+  //shiftIndication => 1:P、2:R、3:N、4:D、6:L、7:B
+  if (localData.lastShiftIndication === 4 && currentCanData.shiftIndication === 2) {
+    //シフトが4:Dから2:Rになった
+    log.debug('[DrivingScore][駐車行動] 4:Dから2:R 駐車開始');
+    const prevIndex8s = searchIndex(canDataList, currentIndex, 8000); //8秒前
+    localData.parkingAction = true;
+    localData.parkingActionStartTimestamp = (prevIndex8s === -1) ? 0 : canDataList[prevIndex8s].timestamp;
+    localData.parkingActionShiftChangeTimestamp = currentCanData.timestamp; //DからRになったタイミング
+
+  } else if (localData.lastShiftIndication === 2 && currentCanData.shiftIndication === 4) {
+    //シフトが2:Rから4:Dになったので切り替えし
+    if (localData.parkingAction) {
+      log.debug('[DrivingScore][駐車行動] 2:Rから4:D 切り替えし');
+      //評価を確定
+      const parkingActionScore = calculatorParkingScore(canDataList
+        , localData.parkingActionStartTimestamp
+        , localData.parkingActionShiftChangeTimestamp
+        , currentCanData.timestamp);
+      localData.parkingActionScoreList.push(parkingActionScore);
+
+      localData.parkingAction = false;
+    }
+
+  } else if (currentCanData.shiftIndication === 1) {
+    //シフトが1:Pになったので評価終了
+    if (localData.parkingAction) {
+      //評価を確定
+      const parkingActionScore = calculatorParkingScore(canDataList
+        , localData.parkingActionStartTimestamp
+        , localData.parkingActionShiftChangeTimestamp
+        , currentCanData.timestamp);
+      localData.parkingActionScoreList.push(parkingActionScore);
+
+      localData.parkingAction = false;
+    }
+
+    if (0 < localData.parkingActionScoreList.length) {
+      //切り返し等で複数回評価された場合を考慮して、平均を評価点とする
+      const {  s1, s2, s3, score1, scoreA, scoreB } = localData.parkingActionScoreList.reduce(
+        (acc, { s1, s2, s3, score1, scoreA, scoreB }) => ({
+          s1: acc.s1 + s1,
+          s2: acc.s2 + s2,
+          s3: acc.s3 + s3,
+          score1: acc.score1 + score1,
+          scoreA: acc.scoreA + scoreA,
+          scoreB: acc.scoreB + scoreB
+        }),
+        { s1: 0, s2: 0, s3: 0, score1: 0, scoreA: 0, scoreB: 0 }
+      );
+      const count = localData.parkingActionScoreList.length;
+      result = {
+        s1: s1 / count,
+        s2: s2 / count,
+        s3: s3 / count,
+        score1: score1 / count,
+        scoreA: scoreA / count,
+        scoreB: scoreB / count
+      };
+      log.debug('[DrivingScore][駐車行動] 1:P 駐車完了.'
+        +' score1=>' + result.score1.toFixed(2)
+        +' scoreA=>' + result.scoreA.toFixed(2)
+        +' scoreB=>' + result.scoreB.toFixed(2)
+        + ' (' + localData.parkingActionScoreList.length + '回評価した平均)');
+
+      localData.parkingActionScoreList = [];
+    }
+  }
+
+  if (currentCanData.shiftIndication === 1
+    || currentCanData.shiftIndication === 2
+    || currentCanData.shiftIndication === 4) {
+    //1:P、2:R、4:Dのみ使用する
+    localData.lastShiftIndication = currentCanData.shiftIndication;
+  }
+  return result;
+};
+
+/**
+ * 誤差データを9つのセルに分割し、それぞれのセルの割合を求めてエントロピーを計算
+ *
+ * @param {number[]} errors - 予測誤差のリスト
+ * @param {number} alpha - 90%タイル値（分布の範囲を決定するため）
+ * @returns {number} - エントロピー値 H_p
+ */
+const calculateEntropy = (errors, alpha) => {
+  // 最小誤差値;
+  let min = Math.min(...errors);
+  // 最大誤差値
+  let max = Math.max(...errors);
+  // 誤差の範囲
+  let range = max - min;
+  // 9セルに分割するためのセル幅
+  let cellWidth = range / 9;
+  // 各セルのカウント用配列（初期値0）
+  let bins = Array(9).fill(0);
+
+  // 誤差データを9つのセルに振り分ける
+  for (let err of errors) {
+    // 最後のセルを超えないようにする
+    let binIndex = Math.min(8, Math.floor((err - min) / cellWidth));
+    bins[binIndex]++;
+  }
+
+  // 各セルの確率 P_i を計算（割合 = 各セルのデータ数 ÷ 全データ数）
+  let total = errors.length;
+  let probabilities = bins.map(count => count / total);
+
+  // エントロピー H_p の計算（ベース9の対数を使用）
+  // 確率が0の場合は計算しない（log(0)は無限大になるため）
+  // エントロピーは負の値になるので、マイナスをつけて正にする
+  let entropy = -probabilities.reduce((sum, p) => p > 0 ? sum + (p * (Math.log(p) / Math.log(9))) : sum, 0);
+
+  return entropy;
+};
+
+/**
+ * 中高速走行
+ *
+ * @param {Object} canDataList - 車載CANデータ
+ * @param {number} currentIndex - 計算を開始するcanDataListのインデックス
+ * @param {Object} localData - 運転診断中に好きなデータを保持するための連想配列
+ * @returns {number} 運転診断スコア（0 - 100）
+ */
+const midHighSpeedDrive = (canDataList, currentIndex, localData) => {
+  //initialize
+  localData.midHighSpeedDriveTimestamp ??= -1;
+  localData.steeringAngles ??= [];
+
+  const currentCanData = canDataList[currentIndex];
+  if (currentCanData == null || currentCanData.repeat !== 0) {
+    return -1;
+  }
+
+  //速度40km/h以上か
+  //ウィンカーでてないか（turnSignal 0:ウインカーOFF、1:左ウィンカーON、2:右ウィンカー）
+  //最大舵角が15度以下か
+  let score = -1;
+  if (40 <= currentCanData.vehicleSpeed
+    && currentCanData.turnSignal === 0
+    && Math.abs(currentCanData.steeringAngle) <= 15)
+  {
+
+    //舵角を取得する（steeringAngle 単位:degree、-1080~1080（L:+、R:-））
+    localData.steeringAngles.push(currentCanData.steeringAngle);
+
+    //10秒通過したか
+    if (localData.midHighSpeedDriveTimestamp === -1) {
+      localData.midHighSpeedDriveTimestamp = currentCanData.timestamp;
+    }
+    const timestamp = localData.midHighSpeedDriveTimestamp + 10000;
+    if (currentCanData.timestamp < timestamp) {
+      return -1;
+    }
+
+    //10秒経過したら、その10秒分のデータを使って計算する
+    log.debug('[DrivingScore][中高速走行] 検知');
+
+    //ステアリングエントロピーを算出する
+    //中高速走行でのステアリングエントロピーからハンドル操作の安定度を評価します
+    //少なくとも4つの舵角データが必要
+    if (localData.steeringAngles.length < 4) {
+      log.debug('[DrivingScore][中高速走行] データ不足のためエントロピーの計算をスキップ');
+
+    } else {
+      /*
+       * （パワーポイントより抜粋）
+       * サンプリング間隔は、50msとし、3データ毎に平均値を求めると、人間の最短制御間隔とされる150ms毎の舵角値を得る。
+       * 過去3点（n-3、n-2、n-1）の舵角値を用いて、n−1時点を中心とする二次テイラー展開により算出される。
+       * 1. n時点での舵角予測値θを求める
+       * 2. 実際のn時点舵角値θ(n)との差をとることにより、n時点での予測誤差値e(n)を求める
+       * ※CAN側から50mでデータが送られてくることを前提とするため、配列の要素は50ms間隔に格納されていると考える
+       */
+      //4番目のデータからループ開始（0,1,2のデータは予測に使う）
+      const angles = localData.steeringAngles;
+      const predictions = []; //予測された舵角のリスト
+      const errors = []; //予測誤差（実際の舵角との差）のリスト
+      for (let i = 3; i < angles.length; i++) {
+        let thetaN = angles[i]; // 実際の舵角
+
+        // 二次テイラー展開を用いた舵角の予測値 θₚ(n)
+        // ※Excelの計算値：=J8 + (J8-J7) + ((J8-J7)-(J7-J6)) / 2
+        let thetaPN = angles[i - 1] + (angles[i - 1] - angles[i - 2]) + ((angles[i - 1] - angles[i - 2]) - (angles[i - 2] - angles[i - 3])) / 2.0;
+
+        predictions.push(thetaPN);     // 予測値をリストに追加
+        errors.push(thetaN - thetaPN); // 予測誤差をリストに追加
+
+      }
+      log.debug('[DrivingScore][中高速走行] 予測値の個数=>' + predictions.length);
+
+      /*
+       * （パワーポイントより抜粋）
+       * 誤差の90%タイル値（上位90%に位置する誤差の値）を計算
+       */
+      // 誤差を昇順ソート
+      let sortedErrors = errors.slice().sort((a, b) => a - b);
+      // 90%位置のインデックス
+      let alphaIndex = Math.floor(0.9 * sortedErrors.length);
+      // 90%タイル値
+      alpha = sortedErrors[alphaIndex];
+
+      /*
+       * （パワーポイントより抜粋）
+       * αに基づき、度数分布を九つのセルに分け、各セルに入る割合𝑃1,𝑃2,...,𝑃9を求め、エントロピー値 𝐻_𝑝を計算する
+       */
+      const entropy = calculateEntropy(errors, alpha);
+
+      // 評価点 = 1 - ステアリングエントロピー
+      score =  (1 - entropy) * 100;
+      log.debug('[DrivingScore][中高速走行] エントロピー=>' + entropy + ', score=>' + score);
+    }
+  }
+
+  // Reset
+  localData.midHighSpeedDriveTimestamp = -1;
+  localData.steeringAngles = [];
+  return score;
+};
+
+/**
+* Jerk(G/s)を計算
+* currentIndexとcurrentIndex-1のCanDataでJerk値を計算する
+*
+* @param {Object} canDataList - 車載CANデータ
+* @param {number} currentIndex - 計算を開始するcanDataListのインデックス
+* @param {number} previousIndex - 計算を開始するひとつ前のcanDataListのインデックス
+* @returns {Object} longAccJerkとlatAccJerk
+*/
+const jerk = (canDataList, currentIndex, previousIndex) => {
+  if (canDataList[currentIndex] == null || canDataList[currentIndex].repeat !== 0
+    || previousIndex === -1 || canDataList[previousIndex] == null || canDataList[previousIndex].repeat !== 0) {
+    return null;
+  }
+
+  //現在のCanData
+  const currentSec = canDataList[currentIndex].timestamp / 1000.0;
+  const currentLongAcc = canDataList[currentIndex].longAcc;
+  const currentLatAcc = canDataList[currentIndex].latAcc;
+
+  //ひとつ前のCanData
+  const previousSec     = canDataList[previousIndex].timestamp / 1000.0;
+  const previousLongAcc = canDataList[previousIndex].longAcc;
+  const previousLatAcc  = canDataList[previousIndex].latAcc;
+
+  //Jerk(G/s)
+  const longAccJerk = (currentLongAcc - previousLongAcc) / (currentSec - previousSec);
+  const latAccJerk = (currentLatAcc - previousLatAcc) / (currentSec - previousSec);
+
+  return {
+    longAccJerk: longAccJerk,
+    latAccJerk: latAccJerk
+  };
+};
+
+/**
+ * Jerk_LPF(G/s)を計算
+ *
+ * @param {Object} canDataList - 車載CANデータ
+ * @param {number} currentIndex - 計算を開始するcanDataListのインデックス
+ * @param {Object} localData - 運転診断中に好きなデータを保持するための連想配列
+ * @returns {Object} longAccJerkLPFとlatAccJerkLPF
+ */
+const jerkLPF = (canDataList, currentIndex, localData) => {
+  //Initialize
+  localData.longAccJerkLPFList ??= {};
+  localData.latAccJerkLPFList ??= {};
+
+  /*
+   * Jerk(G/s)の計算に使用するデータ
+   * ・currentIndex   => timestamp acc
+   * ・currentIndex-1 => timestamp acc（ひとつ前）
+   *
+   * Jerk_LPF(G/s)の計算に使用するデータ
+   * ・currentIndexで計算したJerk
+   * ・currentIndex-1で計算したJerk_LPF（ひとつ前）
+   * ・LPFパラメータ（T[s]=0.05、F[Hz]=2、tau=1/(2πF)=0.079577472）
+   */
+   // ひとつ前のインデックス
+   const previousIndex = getPreviousIndex(canDataList, currentIndex);
+
+   //現在のJerk(G/s)
+   const currentJerkResult = jerk(canDataList, currentIndex, previousIndex);
+   if (currentJerkResult == null) {
+     return null;
+   }
+
+   //ひとつ前のJerk_LPF
+   const previousJerkLPFKey = canDataList[previousIndex].timestamp.toString();
+   if (localData.longAccJerkLPFList[previousJerkLPFKey] == null || localData.latAccJerkLPFList[previousJerkLPFKey] == null) {
+     //ひとつ前のJerk_LPFが無いので計算
+     jerkLPF(canDataList, previousIndex, localData);
+   }
+   const previousLongAccJerkLPF = localData.longAccJerkLPFList[previousJerkLPFKey] ?? 0;
+   const previousLatAccJerkLPF = localData.latAccJerkLPFList[previousJerkLPFKey] ?? 0;
+
+   //LPFパラメータ
+   const T = 0.05;
+   const F = 2;
+   const tau = 1 / (2 * Math.PI * F);
+
+   //現在のJerk_LPF
+   const currentLongAccJerkLPF = previousLongAccJerkLPF * tau / (T + tau) + currentJerkResult.longAccJerk * T / (T + tau);
+   const currentLatAccJerkLPF = previousLatAccJerkLPF * tau / (T + tau) + currentJerkResult.latAccJerk * T / (T + tau);
+
+   //次回のために現在のJerkLPFを保持しておく
+   const currentJerkLPFKey = canDataList[currentIndex].timestamp.toString();
+   localData.longAccJerkLPFList[currentJerkLPFKey] = currentLongAccJerkLPF;
+   localData.latAccJerkLPFList[currentJerkLPFKey] = currentLatAccJerkLPF;
+
+   return {
+     longAccJerkLPF: currentLongAccJerkLPF,
+     latAccJerkLPF: currentLatAccJerkLPF
+   };
+};
+
+/**
+ * 連想配列（longAccJerkLPFListとlatAccJerkLPFList）に溜まっている古いデータを削除
+ *
+ * @param {number} listMax - 連想配列に残すデータ数（Default:100）
+ */
+const deleteJerkLPFList = (listMax=100) => {
+  //currentIndexに対して、ひとつ前のJerk_LPFがあれば計算できるため
+  //要素が増えすぎた場合は、古いデータを削除する（念のためlistMax個残しておく）
+  let keys = Object.keys(localData.longAccJerkLPFList);
+  if (listMax < keys.length) {
+    // 数値としてソート（古い順）
+    keys.sort((a, b) => Number(a) - Number(b));
+    // 古いキーを削除（超過分すべて）
+    const excessKeys = keys.slice(0, keys.length - listMax);
+    for (const key of excessKeys) {
+      delete localData.longAccJerkLPFList[key];
+      delete localData.latAccJerkLPFList[key];
+    }
+  }
+};
+
+/**
+ * ヒヤリ判定
+ *
+ * @param {Object} canDataList - 車載CANデータ
+ * @param {number} currentIndex - 計算を開始するcanDataListのインデックス
+ * @param {Object} localData - 運転診断中に好きなデータを保持するための連想配列
+ * @returns {Object} ヒヤリ判定結果（前後加速度ヒヤリならscore1、横加速度ヒヤリならscore2）
+ */
+const hiyari = (canDataList, currentIndex, localData) => {
+  //Initialize
+  localData.hiyariTimestamp ??= 0;
+
+  const result = {
+    longAccHiyari: false,
+    latAccHiyari: false
+  }
+
+  //閾値を超えたら1秒間は判定しない
+  if (canDataList[currentIndex] == null
+    || canDataList[currentIndex].repeat !== 0
+    || canDataList[currentIndex].timestamp <= (localData.hiyariTimestamp + 1000)) {
+    return result;
+  }
+
+  //Jerk_LPF(G/s)の計算
+  const jerkLPFResult = jerkLPF(canDataList, currentIndex, localData);
+  if (jerkLPFResult == null) {
+    return result;
+  }
+
+  //古いJerkLPFデータを削除する（メモリ削減）
+  deleteJerkLPFList();
+
+  //ヒヤリ判定（Jerk_LPFの絶対値が0.4G/sを越えたか）
+  result.longAccHiyari = (0.4 < Math.abs(jerkLPFResult.longAccJerkLPF));
+  result.latAccHiyari  = (0.4 < Math.abs(jerkLPFResult.latAccJerkLPF));
+  if (result.longAccHiyari || result.latAccHiyari) {
+    log.debug('[DrivingScore][ヒヤリ] 発生!');
+    localData.hiyariTimestamp = canDataList[currentIndex].timestamp;
+  }
+
+  return result;
+};
+
+// 運転診断スコアロジックの返却値
+// ※スコア値を加算減算させたくないときは-1を指定する
+// ※運転診断ロジックが返却した-1以外の平均値が診断スコアになる
+// ※hiyariをtrueにすると地図上にヒヤリ地点として登録される
+const result = {
+  //運転診断スコア
+  drivingScore: {
+    score: {
+      overAll: -1,
+      score1: -1, //アクセル/ブレーキ操作の丁寧さ
+      score2: -1  //ハンドル操作の安定性
+    },
+    messages: []
+  },
+  //能力指標スコア
+  capabilityScore: {
+    score: {
+      scoreA: -1, //歩行機能
+      scoreB: -1  //注意機能
+    },
+    messages: {
+      messageA: null,
+      messageB: null
+    }
+  },
+  hiyari: false,
+  intersection: ''
+};
+
+if (canDataList.length === 0) {
+  return null;
+}
+//前回実行した運転診断直後の配列インデックスを探す
+const fistAction = (localData.lastTimestamp === undefined);
+localData.lastTimestamp ??= getFirstTimestamp(canDataList);
+
+const lastIndex = getIndex(canDataList, localData.lastTimestamp);
+const currentIndex = fistAction ? lastIndex : getNextIndex(canDataList, lastIndex);
+if (currentIndex === -1) {
+  return null;
+}
+
+//前回実行してから溜まったセンサー情報を順番に処理していく
+let parkingActionScore = null;
+let midHighSpeedDriveScore = -1;
+let hiyariResult = { longAccHiyari: false, latAccHiyari: false };
+for (let index = currentIndex; index < canDataList.length; index++) {
+  if (canDataList[index] == null || canDataList[index].repeat !== 0) {
+    continue;
+  }
+  localData.lastTimestamp = canDataList[index].timestamp;
+
+  //ヒヤリ判定
+  if (hiyariResult.longAccHiyari === false || hiyariResult.latAccHiyari === false) {
+    const newHiyariResult = hiyari(canDataList, index, localData);
+    // 2種類のヒヤリ判定がある
+    hiyariResult.longAccHiyari = hiyariResult.longAccHiyari ? true : newHiyariResult.longAccHiyari;
+    hiyariResult.latAccHiyari = hiyariResult.latAccHiyari ? true : newHiyariResult.latAccHiyari;
+  }
+
+  //駐車行動のスコアを計算
+  if (parkingActionScore === null) {
+    parkingActionScore = parkingAction(canDataList, index, localData);
+  }
+
+  //中高速走行のスコアを計算
+  const scoreTemp = midHighSpeedDrive(canDataList, index, localData);
+  if (scoreTemp !== -1) {
+    //※複数回評価された場合は平均を評価点とする
+    midHighSpeedDriveScore = (midHighSpeedDriveScore === -1) ? scoreTemp : (scoreTemp + midHighSpeedDriveScore) / 2.0;
+  }
+}
+
+if (parkingActionScore !== null) {
+  //アクセル/ブレーキ操作の丁寧さ
+  result.drivingScore.score.score1 = parkingActionScore.score1;
+  //S1x0.57 が S3x0.18より大きいか、小さいか
+  if ((parkingActionScore.s1 * 0.57) >  (parkingActionScore.s3 * 0.18)) {
+    //減速度評価をアクセル/ブレーキ操作の丁寧さのアドバイスとする
+    log.debug('[DrivingScore][駐車行動] Message=>減速度評価');
+    result.drivingScore.messages.push(getMessage(scoreLogicJson, 'score1', 'all', result.drivingScore.score.score1, '減速度評価'));
+  } else {
+    //加速度評価をアクセル/ブレーキ操作の丁寧さのアドバイスとする
+    log.debug('[DrivingScore][駐車行動] Message=>加速度評価');
+    result.drivingScore.messages.push(getMessage(scoreLogicJson, 'score1', 'all', result.drivingScore.score.score1, '加速度評価'));
+  }
+
+  //歩行機能
+  result.capabilityScore.score.scoreA = parkingActionScore.scoreA;
+  result.capabilityScore.messages.messageA = getMessage(scoreLogicJson, 'scoreA', 'all', result.capabilityScore.score.scoreA);
+
+  //注意機能
+  result.capabilityScore.score.scoreB = parkingActionScore.scoreB;
+  result.capabilityScore.messages.messageB = getMessage(scoreLogicJson, 'scoreB', 'all', result.capabilityScore.score.scoreB);
+}
+
+if (midHighSpeedDriveScore !== -1) {
+  //ハンドル操作の安定性
+  result.drivingScore.score.score2 = midHighSpeedDriveScore;
+  result.drivingScore.messages.push(getMessage(scoreLogicJson, 'score2', 'all', result.drivingScore.score.score2));
+}
+
+if (hiyariResult.longAccHiyari || hiyariResult.latAccHiyari) {
+  //ヒヤリ判定。スコアは変更せずに、メッセージのみ追加する
+  result.hiyari = true;
+
+  //前後加速度のJerk_LPFが0.4Gを越えたか
+  if (hiyariResult.longAccHiyari) {
+    //横加速度のJerk_LPFが0.4Gを越えたか
+    if (hiyariResult.latAccHiyari) {
+      //前後加速度，横加速度のアドバイスを表示する
+      result.drivingScore.messages.push(getMessage(scoreLogicJson, 'score1', 'all', 0, 'ヒヤリ')); //アクセル/ブレーキ操作のヒヤリ
+      result.drivingScore.messages.push(getMessage(scoreLogicJson, 'score2', 'all', 0, 'ヒヤリ')); //ハンドル操作のヒヤリ
+    } else {
+      //前後加速度のアドバイスを表示する
+      result.drivingScore.messages.push(getMessage(scoreLogicJson, 'score1', 'all', 0, 'ヒヤリ')); //アクセル/ブレーキ操作のヒヤリ
+    }
+  } else {
+    //横加速度のJerk_LPFが0.4Gを越えたか
+    if (hiyariResult.latAccHiyari) {
+      //横加速度のアドバイスを表示する
+      result.drivingScore.messages.push(getMessage(scoreLogicJson, 'score2', 'all', 0, 'ヒヤリ')); //ハンドル操作のヒヤリ
+    }
+  }
+}
+
+//総合評価を計算
+//アクセル/ブレーキ操作の丁寧さ，ハンドル操作の安定性，歩行機能，認知機能の平均値を算出する
+let scoreList = [
+  result.drivingScore.score.score1,
+  result.drivingScore.score.score2,
+  result.capabilityScore.score.scoreA,
+  result.capabilityScore.score.scoreB
+];
+scoreList = scoreList.filter(num => num > -1);
+//返却する値がないときはnullにする
+if (scoreList.length === 0) {
+  return result.hiyari ? result : null;
+}
+let sum = scoreList.reduce((acc, num) => acc + num, 0);
+result.drivingScore.score.overAll = sum / scoreList.length;
+
+//総合評価のメッセージは、1回のトリップ中で返却した全ての総合スコアも含めた平均値で探す
+scoreList = scoreLogicResultList.filter(obj => obj.drivingScore.score.overAll > -1);
+sum = scoreList.reduce((acc, obj) => acc + obj.drivingScore.score.overAll, 0);
+sum += result.drivingScore.score.overAll;
+let avg = sum / (scoreList.length + 1);
+result.drivingScore.messages.push(getMessage(scoreLogicJson, 'over_all', 'all', avg));
+
+return result;
