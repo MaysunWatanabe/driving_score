@@ -74,7 +74,7 @@ ProjectSmith の標準的な開発サイクル。Phase A (初版) は Web 主体
 
 | パターン | 起点 | ブランチ | 必要な操作 |
 |---|---|---|---|
-| **小さな修正 / バグ / 詳細詰め** | tmux Claude (drift) | drift-YYYYMMDD-... | `.smith` の session_id を使うだけ。spec_session 不要 |
+| **小さな修正 / バグ / 詳細詰め** | tmux Claude (drift) | drift-YYYYMMDD-... | `projectsmith identity` の session_id を使うだけ。spec_session 不要 |
 | **大きな仕様変更 / 新ドメイン追加 / 構造再編** | Web で 新規 SpecSession 作成 | smith/gen-{新 session_id} | Phase A 〜 D を再実行 |
 | **repo そのものを起こし直し (枠組み再編)** | Repository Dashboard / Session Dashboard の Recast ボタン | (新 GitHub repo + 新 Repository row) | recast = 新 repo 作成、旧 repo は status='recast' で残る |
 
