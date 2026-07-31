@@ -93,7 +93,7 @@ Refs: proposal #97, fact #2257
 1. record_implementation(proposal_id=N, changed_files=[...], test_results={unit:..., e2e:...})
 2. push_spec_code_mapping(mappings=[{node_id:..., file_path:..., line_range:...}])
 3. (UI を変更した場合) 各 UI 画面を撮影し upload_screenshot(kind="actual") で還流
-   - repository_id / session_id / generation は .smith から渡す（詳細は CLAUDE.md §14-3）
+   - repository_id / session_id / generation は `projectsmith identity --json` から渡す（詳細は CLAUDE.md §14-3-1）
 4. git push origin <drift-branch>
 5. ユーザに PR 作成可否を確認
 ```
