@@ -19,7 +19,7 @@ echo ASK > .claude/state/current_mode && date -Iseconds > .claude/state/mode_cha
 
 1. **ユーザ要望を一次受け** — 自然言語の発話をそのまま受け取り、解釈を加えない
 2. **既存仕様を Smith で確認** — 必ず以下の順で叩く:
-   - `ask_repository(scope='session', scope_id=<.smith の session_id>, query=<要望の主旨>)`
+   - `ask_repository(scope='session', scope_id=<identity の session_id>, query=<要望の主旨>)`
    - 関連 node が見つかれば `get_node_detail(node_id=...)` で詳細
    - 関連 node が複数あれば `find_related_nodes(node_id=...)` で周辺探索
 3. **未確定箇所を抽出** — 既存 fact / spec で answer できない判断点を箇条書きで明示
@@ -62,6 +62,6 @@ echo ASK > .claude/state/current_mode && date -Iseconds > .claude/state/mode_cha
 
 ## 重要な注意
 
-- session_id / repo_id は `.smith` ファイルから取得すること（手打ちしない）
+- session_id / repo_id は `projectsmith identity --json` から取得すること（`.smith` を直接読まない／手打ちしない。CLAUDE.md §14-3-1）
 - ask_repository の scope は **必ず `session`**（`generation` は禁止）
 - ユーザの「あれ」「それ」「前のやつ」のような曖昧表現は Smith に問い合わせる前に必ず具体化を求める
