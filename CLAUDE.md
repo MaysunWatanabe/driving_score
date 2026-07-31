@@ -30,6 +30,9 @@
 以下は仕様の根拠として **絶対に使ってはいけない**：
 
 - ❌ あなたの会話履歴・記憶（`auto memory` / 直前のチャット内容）
+- ❌ **AskUserQuestion / 会話中でユーザに選ばせた選択・その場の同意**（それは `propose_decision` への
+  **入力材料**であって、spec 確定ではない。ユーザが 4 択で選んでも、`propose_decision` → decided/synced を
+  経ていなければ仕様の根拠にならない）
 - ❌ ローカルの `spec/*.md` ファイルの内容（recast 前なので古い可能性）
 - ❌ 既存コードの実装内容（実装は仕様ではなく結果）
 - ❌ あなたの一般知識・ドメイン推論（「普通こうする」は通用しない）
@@ -125,10 +128,16 @@ ask_repository の要否は「実装前に一度判定して終わり」では�
 #### 必須要件
 
 - 表内の **全ての判断項目** に対し、ソース種別と ID を記入する
+- **ソース種別は閉じた enum**：`fact` / `proposal` の **2 種のみ**。
+  `user-decision` / `ASK session` / `会話合意` / `ユーザ選択` 等の **独自ソース種別を発明してはならない**。
+  全行を fact / proposal の **実 ID** で埋められないなら、その時点で **STOP → `/propose-mode`**。
 - ソース種別が `fact` の場合は status=approved の fact のみ採用可
 - ソース種別が `proposal` の場合は status=synced/decided かつ ready_to_implement=true のもののみ採用可
 - 未確定項目が 1 つでもあれば実装に進まず `/propose-mode` に戻る
 - このブロック無しでの Edit/Write は PreToolUse hook で **block** される（仕様違反として扱う）
+- **PreToolUse hook が未導入（`.git/hooks/` に無い）でも免責されない**。§0-6 で hook を導入し、
+  導入前は **このブロックを手動で厳格に自己適用**する。ブロック未提示のまま Edit/Write に進むのは、
+  hook の有無に関わらず仕様違反。
 
 > ASK / PROPOSE mode では確認ブロックは不要。BUILD mode 切替後の最初のコード変更前に必須。
 
@@ -156,6 +165,52 @@ ask_repository の要否は「実装前に一度判定して終わり」では�
 - **`.claude/commands/{ask,propose,build}-mode.md`**: 各 mode 専用の詳細手順 / 重点ルール
 
 > mode 切替を怠ると、ASK で確認すべきところを BUILD のつもりで実装してしまう、などの事故が起きる。会話の節目で必ず宣言と切替を行うこと。
+
+### 0-6. セッション起動時の疎通確認（MANDATORY / セッションで最初にやる）
+
+実装・提案・spec 確認のいずれかに入る前に、**セッションで最初に 1 回**、以下を確認する。
+これが済むまで Edit / Write / commit を含む一切の作業に入ってはならない。
+
+0. **identity 確認**：`projectsmith identity` を実行し、`usable: true` であることを確認する。
+   別サーバ用の `.smith` が残っていると、以降のすべての呼び出しが**存在しない、あるいは
+   他人のリポジトリ**を指す（§14-3-1）。ここで止まったら復旧するまで進まない。
+1. **Smith MCP 疎通確認**：`ask_repository`（または `list_ask_scopes` 等の軽い MCP 呼び出し）を 1 回実行し、
+   Smith に届くことを確認する。
+   - MCP tool が使えない / deferred 一覧に出ていない / 応答が無い場合 → **STOP**。
+     「Smith MCP 未接続（`.mcp.json` / MCP サーバを確認）」と報告し、復旧を依頼する。
+   - **MCP が繋がらないまま実装を進めてはならない**（自主性・curl 直叩き等で恒久的に代替しない。
+     疎通が確立するまで作業を止める）。
+2. **hook 導入確認**（2 系統あるので両方）：
+   - **git hook（commit-msg / proposal・fact ID 必須化）**：`git config --get core.hooksPath` が `.githooks`
+     になっているか確認。なっていなければ `bash scripts/install-githooks.sh` を実行して導入する。
+   - **Claude Code hook（PreToolUse = 実装前 spec 確認ブロックの強制）**：`.claude/settings.json` と
+     `.claude/hooks/on_pretool_edit.sh` が存在するか確認（通常 initial_files で入っている）。
+   - hook はガードレールの**強制力**。どちらか未導入・未適用なら §0-4 の block が効かないので、
+     導入・適用されるまで **§0-4 のブロックを手動で厳格に自己適用**する。
+
+> 「Smith に繋がるか」「hook が入っているか」を確認する儀式を省略した結果、Smith 未経由の実装が
+> そのまま通ってしまう。**セッション最初の固定手順**とすること。
+
+### 0-7. 「これは spec 外（tooling / build / 環境設定）」という自己例外の禁止
+
+ユーザ要望を受けたら、それが **アプリ機能かビルド環境か設定かを問わず**、コード変更・設定変更の
+**前に必ず ask_repository / propose_decision を通す**。「これは tooling だから spec 外」という
+線引きを **自分で行ってはならない**。
+
+- ビルド設定・環境変数・鍵管理・`.gitignore`・emulator・CI・依存追加も、すべて spec ドメインに紐づく
+  （例: 鍵 / dev・prod 環境分離 → `env.config.*`、BLE emulator → `infra.*` / `middleware.*`）。
+- 「機能じゃないから」「環境整備だから」「一時的な足場だから」は ask / propose を省く理由に**ならない**。
+- 迷ったら「これは spec 外」ではなく「では ask_repository で確認する」に倒す。
+
+> spec に無い判断は全部 propose_decision（§21-1）。**ここに tooling 例外は無い。**
+
+### 0-8. リマインダーと成功体験の扱い
+
+- 毎ターン注入される `[ProjectSmith mode tracker]` や「❌…」で始まる警告は **定型文ではなく毎回のシグナル**。
+  「**今の私の判断は spec 由来か？**」を都度問い直すトリガーとして読む（解像度を下げて読み流さない）。
+- 疎通・実装が end-to-end で **動いた達成感を「このやり方で合っている」の根拠にしない**。
+  「動いたか」と「Smith を経由したか」は**別問題**。動いても Smith 未経由なら仕様違反であり、
+  成功 momentum のまま次の判断を独断で進めてはならない。
 
 ***
 
@@ -437,6 +492,32 @@ E2E 完了報告には必ず以下を含める。
 > この一連がクリーン状態から成功しない場合、実装は **未完了** とする。
 > 「自分の手元のキャッシュで動いている」状態は再現性の担保にならない。
 
+### 12-1. 時間をまたぐ再現性 — lock と digest（MANDATORY）
+
+§12 が担保するのは「**今**クリーンで建つこと」。ここで担保するのは「**1年後も同じものが建つこと**」。
+両方揃って初めて再現性になる。環境ドリフトはエラーで止まらず**静かに挙動が変わる**ため、
+テストが緑でも気づけない。だから機械的に固定する。
+
+1. **依存は lock ファイルで固定する。**
+   マニフェスト（`pyproject.toml` / `package.json` / `go.mod` 等）があるディレクトリには、
+   対応する lock（`uv.lock` / `package-lock.json` / `go.sum` 等）が**必ず**存在すること。
+   - 言語混在リポジトリでは**エコシステムごとに**必要。片方だけ lock されている状態は未達。
+   - 依存を追加/更新したら **lock を再生成して同じコミットに含める**。
+2. **ベースイメージは digest で固定する。**
+   `FROM python:3.11-slim` は動くタグで、再ビルドすると中身が変わる。
+   `FROM python:3.11-slim@sha256:...` の形にする。
+3. **環境を変えたら申告する。**
+   依存・ランタイム・ベースイメージ・環境変数を変えたら `submit_design_change` の `env` で
+   申告する（→ `/mcp__projectsmith__design-change`）。**理由（reason）を必ず書く**。
+   「なぜこの版か」は lock には書けず、1年後に上げ直す判断ができるのは理由だけ。
+4. **制約は先に確認する。**
+   spec 側に env の制約 fact（例「3.11 系。3.12 は X 未対応」）がある場合、それに反する版へ
+   上げてはならない。必要なら**先に propose** して合意を取る。
+
+> **保守案件では既定で「環境は FIX のまま、ソースのみ修正」**。
+> 環境を更新したくなったら、それは独立した1つの変更として扱い、機能変更と**別コミット/別 PR**に分ける。
+> 混ぜると障害調査で「直ったのか環境が変わったのか」を切り分けられなくなる。
+
 ***
 
 ## 13. Phase Completion Rule（MANDATORY）
@@ -487,7 +568,7 @@ UI を含む場合、実装に着手する **前** に以下を実施する。
 
 1. `ask_repository` で **画面仕様** を取得する
 2. **実装対象機能リスト** を作成する（このリストを以降の Coverage Check / 実機確認の比較基準にする）
-3. **設計モック (design) を取得する** — `get_ui_screenshots(repository_id=<.smith の repository_id>, node_id=<対象 UI ノード>, kind="design")` を呼ぶ。
+3. **設計モック (design) を取得する** — `get_ui_screenshots(repository_id=<identity の repository_id>, node_id=<対象 UI ノード>, kind="design")` を呼ぶ（§14-3-1）。
    設計者が用意した画面イメージ（モック）があれば画像で返るので、**そのレイアウト・構成・配置に合わせて実装する**。モックが無ければ仕様テキスト（手順 1）に従う。
 
 > このリストなしに UI 実装を開始してはならない。
@@ -504,22 +585,36 @@ UI 変更を含む場合、実装完了直後に **必ず** 以下を実施す�
 5. **状態更新の検証**（保存後の再描画・他画面への反映・リロード後の状態）
 6. **実装スクショを Smith に還流する** — 確認した各 UI 画面のスクリーンショットを撮影（Web は Playwright MCP、モバイルは maestro MCP 等）し、UI ノードごとに **bash で**
    `projectsmith upload-screenshot --file <画像パス> --node-id <ui ノード> --kind actual` を実行して送る。
-   - **画像を自分で base64 化してはいけない**（大きい画像で転送が切れる／トークンを大量消費する）。コマンドがファイルを読んで base64 化＋送信し、repo/session/generation は `.smith` から自動解決する。
+   - **画像を自分で base64 化してはいけない**（大きい画像で転送が切れる／トークンを大量消費する）。コマンドがファイルを読んで base64 化＋送信し、repo/session/generation は §14-3-1 の解決に従う。
    - Session Dashboard の UI ギャラリーで設計モック (design) と並べて乖離を確認できるようになる。
 
 > これを実施せず次のステップ（CI / push / フェーズ完了）に進んではならない。
 > 実機確認なしで「実装した」と判断する行為は § 14-1 に違反する。
 
-#### 14-3-1. スクショ還流の identity（.smith から / MANDATORY）
+#### 14-3-1. identity の解決（MANDATORY）
 
-`projectsmith upload-screenshot` は **リポジトリ直下の `.smith`** から identity を自動解決するので、通常 repo/session/generation を渡す必要はない（上書きしたいときだけ `--repo-id` / `--session-id` / `--generation`）。
-`get_ui_screenshots` など MCP ツールを**直接**呼ぶ場合のみ、以下を引数に明示する（branch 名からの推測に頼らない）。
+**`.smith` を自分で読んではならない。`projectsmith identity` の出力を使うこと。**
 
-- `repository_id` ← `.smith` の `repository_id`
-- `session_id` ← `.smith` の `session_id`
-- `generation` ← `.smith` の `generation_number`
+`.smith` の `repository_id` / `session_id` は **接続している Smith の中でしか意味を持たない**。
+別のサーバ用の `.smith` が入ったまま実行すると、存在しない ID か **他人のリポジトリ** を指す
+（実際に、ホスティングに繋ぎながら別サーバ用の `.smith` を読み、存在しない
+`repository_id=53` を指した事故がある）。
 
-> 特に drift（`drift-YYYYMMDD-...` ブランチ）では branch 末尾が世代番号でないため、`.smith` 由来でないと世代/セッションが正しく紐づかない。
+```bash
+projectsmith identity            # 人間が読む形
+projectsmith identity --json     # 機械可読（repository_id / session_id / generation_number）
+```
+
+- `usable: false` または「別のサーバ用です」と出たら **STOP**。
+  そこに書かれた ID を使ってはならない。`projectsmith bind --repo-id <id>` で作り直すか、
+  接続先を確認する。
+- `projectsmith upload-screenshot` など CLI のコマンドは同じ解決を内部で行うので、
+  通常 repo/session/generation を渡す必要はない（上書きしたいときだけ `--repo-id` 等）。
+- `get_ui_screenshots` など **MCP ツールを直接呼ぶ場合のみ**、`identity --json` の値を
+  引数に明示する（branch 名からの推測に頼らない）。
+
+> 特に drift（`drift-YYYYMMDD-...` ブランチ）では branch 末尾が世代番号でないため、
+> identity 由来でないと世代/セッションが正しく紐づかない。
 
 #### 14-3-2. いつ撮るか（first pass / drift どちらも MANDATORY）
 
@@ -790,6 +885,8 @@ mode: decision+tasks
 
 ## 20. Claude の具体的な「最初のやること」
 
+0. **§0-6 セッション起動時の疎通確認を最初に行う**（Smith MCP に 1 回届くか確認 / hook 導入確認）。
+   これが済むまで他の作業に入らない。繋がらなければ STOP して復旧を依頼する。
 1. `spec/SPEC_INDEX.md` を読み、`README.md` に文章で仕様を書き出す  
 2. IMPLEMENTATION_PLAN.md を読み、teammate モードでフェーズ順に実装する  
 3. 実装前チェック（0〜7章のルール）をすべて実施する  
