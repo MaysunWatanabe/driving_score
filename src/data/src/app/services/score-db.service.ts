@@ -52,11 +52,11 @@ export class ScoreDbService {
         'CREATE TABLE IF NOT EXISTS score (' +
         ' score_id INTEGER PRIMARY KEY,' +
         ' user_id TEXT,' +
-        ' score_over_all INTEGER,' +
-        ' score1 INTEGER,' +
-        ' score2 INTEGER,' +
-        ' score3 INTEGER,' +
-        ' score4 INTEGER' +
+        ' score_over_all REAL,' +
+        ' score1 REAL,' +
+        ' score2 REAL,' +
+        ' score3 REAL,' +
+        ' score4 REAL' +
         ');'
       , []);
 
@@ -69,7 +69,7 @@ export class ScoreDbService {
         ' message_type TEXT,' +
         ' message_text TEXT,' +
         ' intersection TEXT,' +
-        ' score INTEGER' +
+        ' score REAL' +
         ');'
       , []);
 
@@ -77,11 +77,11 @@ export class ScoreDbService {
         'CREATE TABLE IF NOT EXISTS capability_score (' +
         ' score_id INTEGER,' +
         ' timestamp INTEGER,' +
-        ' score_a INTEGER,' +
+        ' score_a REAL,' +
         ' score_a_message TEXT,' +
-        ' score_b INTEGER,' +
+        ' score_b REAL,' +
         ' score_b_message TEXT,' +
-        ' score_c INTEGER,' +
+        ' score_c REAL,' +
         ' score_c_message TEXT' +
         ');'
       , []);

@@ -409,6 +409,8 @@ export class SensorService {
 
       try {
         var sensorData;
+        // デモ／実センサーの切替閾値は 0。センサログが 1 レコードでも積まれていれば
+        // デモ再生、0 件なら実センサーを使う (proposal #10)
         if (DemoData.instance().getSensorLogDataSize() <= 0) {
           if (self.lastGeolocation === null
             || self.lastAcceleration === null
