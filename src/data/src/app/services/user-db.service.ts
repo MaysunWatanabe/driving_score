@@ -51,7 +51,7 @@ export class UserDbService {
         '    sex INTEGER,'+
         '    birth_year INTEGER,'+
         '    birth_month INTEGER,'+
-        '    height INTEGER,'+
+        '    height REAL,'+
         '    prefecture INTEGER'+
         ');'
       , []);
