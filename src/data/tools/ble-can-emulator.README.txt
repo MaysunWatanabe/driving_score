@@ -20,6 +20,10 @@
                          Phase 1 疎通は cruise.canConnected を使用
   proposal #10/#12/#13   入力に使うモックセンサログの正準形（本ツールの入力元）
            (synced)
+  proposal #16 (synced)  エミュレータ実装を 2 系統併存とし、本ツールを既定と
+                         する / 既存の bumble 版は凍結 / 相互排他 /
+                         広告アドレスタイプ public 要件 /
+                         Phase 1 完了ゲートは本ツールで判定
 
 仕様の正本は ProjectSmith である。本ファイルは実装者向けの手引きであり、
 記述が Smith の応答と食い違った場合は Smith が正しい。
@@ -48,6 +52,47 @@
   └─────────────────┴──────────────────────┴────────────────────────┘
 
 
+ 1-1. エミュレータは 2 系統ある（proposal #16）
+
+このリポジトリには同じ目的のエミュレータが 2 つある。**既定は本ツール（A）**。
+
+  A（既定）  src/data/tools/ble-can-emulator.py        ← 本ファイルが説明するもの
+  B（代替）  src/tools/ble-can-emulator/               ← 既存。凍結扱い
+
+  ┌───────────────┬────────────────────────┬──────────────────────────┐
+  │               │ A（本ツール・既定）    │ B（代替・フォールバック）│
+  ├───────────────┼────────────────────────┼──────────────────────────┤
+  │ BT スタック   │ BlueZ の D-Bus API     │ bumble を HCI に直結     │
+  │ 追加依存      │ なし（OS 同梱のみ）    │ bumble（venv に pip）    │
+  │ 実行権限      │ sudo 不要              │ 要 sudo                  │
+  │ BlueZ         │ 動かしたまま共存       │ mask + stop して占有     │
+  │ 送出データ    │ mock/*.txt.gz の再生   │ math.sin の合成波        │
+  │ Phase 1 判定  │ こちらで行う           │ 対象外・未検証           │
+  └───────────────┴────────────────────────┴──────────────────────────┘
+
+B に切り替えてよいのは、A が使えない次の場合だけ:
+  - BlueZ が org.bluez.LEAdvertisingManager1 を提供しない
+  - bluetoothctl show の SupportedInstances が 0
+  - A の RegisterAdvertisement / RegisterApplication が失敗する
+
+ ★ 相互排他（MANDATORY）
+
+  A と B は同時に起動できない。B は bluetoothd を止めて HCI を占有するため、
+  B の稼働中は A が使う D-Bus API そのものが消える。
+
+  B を使ったあと A に戻すときは、必ず先に BlueZ を復帰させること:
+
+      sudo src/tools/ble-can-emulator/restore-bluez.sh
+
+  B の run.sh は SIGKILL・ターミナル強制終了で trap が発火せず、
+  bluetooth.service が masked のまま残る。mask は永続設定なので、
+  この状態は **再起動しても直らない**。A が「BlueZ に接続できない」と
+  言い出したら、まず上記スクリプトを実行して復帰させること。
+
+  B のファイル（driving_can_peripheral.py / run.sh / restore-bluez.sh 等）は
+  凍結扱いで、削除・リファクタ・機能追加をしてはならない（proposal #16）。
+
+
 -------------------------------------------------------------------------------
  2. 動作要件
 -------------------------------------------------------------------------------
@@ -60,6 +105,9 @@
   - BlueZ 5.72 以降（org.bluez.LEAdvertisingManager1 / GattManager1）
   - Bluetooth アダプタが peripheral ロールに対応していること
       確認: hciconfig -a  →  "Link mode:" に PERIPHERAL が含まれること
+  - 広告のアドレスタイプが public であること（→ §8 の status 0x3E を参照）
+      確認: bluetoothctl show  →  1 行目が "Controller XX:.. (public)"
+            /etc/bluetooth/main.conf の Privacy が off（既定）であること
 
   新規の pip / apt パッケージは追加しない（proposal #14 / #15 で禁止）。
 
@@ -282,12 +330,42 @@ proposal #15 が定める完了条件。以下 4 点がすべて成立したと�
   - PC 側に [adv] LocalName=... の行が出ているか
   - 実機の Bluetooth と位置情報権限が有効か
 
+検出はされるが接続が確立しない（GATT status 0x3E）
+  ★ 広告のアドレスタイプが public でない可能性が高い。
+
+  Android の @capacitor-community/bluetooth-le は addressType=public 前提で
+  接続してくるため、こちらが random static アドレスで広告していると
+  GATT 接続の確立が status 0x3E で失敗する。
+  （これは既存の bumble 版エミュレータで実際に踏んだ問題。proposal #16 で
+    本ツール側の知見として移植した。）
+
+  本ツールはアドレスタイプを明示指定せず BlueZ の既定に従うため、
+  次の 2 点を確認すること:
+
+      bluetoothctl show | head -1
+        → "Controller XX:XX:XX:XX:XX:XX (public)" と出ること
+           (random) と出る場合は public にする必要がある
+
+      grep -n "^Privacy" /etc/bluetooth/main.conf
+        → 何も出ない（= コメントアウトされた既定 off）か、
+           "Privacy = off" であること。device / network になっていると
+           RPA（ランダム化アドレス）で広告してしまう
+
 エミュレータ起動時に登録エラーが出る
   - [ERROR] LE 広告 の登録に失敗 → 他のプロセスが広告枠を使っていないか。
     ActiveInstances / SupportedInstances を確認:
       busctl get-property org.bluez /org/bluez/hci0 \
              org.bluez.LEAdvertisingManager1 ActiveInstances
   - アダプタが peripheral 非対応 → hciconfig -a の Link mode を確認
+
+BlueZ / D-Bus に接続できない、hci0 が見つからない
+  - 代替エミュレータ B（src/tools/ble-can-emulator/）を使ったあと、
+    bluetooth.service が masked のまま残っていないか。§1-1 の相互排他を参照。
+      systemctl is-active bluetooth.service    → inactive なら該当
+      systemctl is-enabled bluetooth.service   → masked なら該当
+    復帰:
+      sudo src/tools/ble-can-emulator/restore-bluez.sh
+    mask は永続なので、この状態は再起動しても直らない。
 
 接続はできるが notify が届かない
   - PC 側に [notify] 購読開始 が出ているか。出ていなければアプリが
@@ -304,12 +382,16 @@ proposal #15 が定める完了条件。以下 4 点がすべて成立したと�
 
 
 -------------------------------------------------------------------------------
- 9. 制約・非適用範囲（proposal #14 / #15 で明示）
+ 9. 制約・非適用範囲（proposal #14 / #15 / #16 で明示）
 -------------------------------------------------------------------------------
 
 本ツールの作業では次を行わない。必要になった場合は propose_decision を通す。
 
   - アプリ本体（src/data/src/app/**）の変更
+  - 代替エミュレータ B（src/tools/ble-can-emulator/）の削除・リファクタ・
+    機能追加。B は凍結扱い（proposal #16）
+  - 本ツールへの bumble 導入、B の D-Bus 化。互いの方式は混ぜない
+  - B への実データ再生機能の移植
   - センサー集約の 4 センサー必須判定の緩和・迂回
   - 切断後の自動再接続ポリシーの確定
   - canDataOnly と combination のセンサー購読差の確定
@@ -332,11 +414,21 @@ proposal #15 が定める完了条件。以下 4 点がすべて成立したと�
   - GATT service / characteristic の D-Bus 公開成功
   - LE 広告の登録成功、BlueZ 側 ActiveInstances = 1
   - アダプタの公開 UUID 一覧に 00002310-... が載ること
+  - コントローラのアドレスタイプが public であること
+      bluetoothctl show → "Controller 24:B2:B9:7B:F0:AA (public)"
+      /etc/bluetooth/main.conf の Privacy は "#Privacy = off"（既定 off）
+    → §8 の status 0x3E 条件は満たしている（ただし実機で確かめてはいない）
 
 未検証（実機の Android 端末が必要）:
   - Phase 1 完了ゲート (b) 実機スキャンでの検出と自動接続
   - Phase 1 完了ゲート (c) connect 成功と startNotifications 確立
   - Phase 1 完了ゲート (d) 12 バイトの実機到達（logcat 確認）
   - 静置状態で運転診断が成立するか
+  - 広告アドレスタイプ public で実際に GATT 接続が確立すること
+    （開発 PC 側の条件確認のみ済み。実機との接続は未実施）
+
+代替エミュレータ B について:
+  - B が実機で動作した実績があるかは不明。Phase 1 完了ゲートの判定対象外
+    （proposal #16）。B の検証状況は未検証のまま据え置く。
 
 ===============================================================================
