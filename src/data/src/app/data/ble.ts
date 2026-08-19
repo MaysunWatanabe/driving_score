@@ -106,10 +106,23 @@ export class BLEDevice {
       const deviceInfo = new BLEDeviceInfo(deviceId, BLEDevice.BLE_SERVICE, BLEDevice.BLE_CHARACTERISTIC_NOTIFY);
       this.connectDevices.push(deviceInfo);
 
+      // connect() はサービス探索の完了を待たずに解決することがある
+      // （Androidが接続確立時に自発的にMTU交換を行い、プラグインがそのコールバックで
+      //   connect を解決するため）。探索前に startNotifications を呼ぶと
+      //   Characteristic not found で失敗するので、明示的に探索完了を待つ。
+      await BleClient.discoverServices(deviceId);
+
       await this.startNotification(deviceInfo);
 
     } catch (error) {
       this.logService.error('[DrivingScore][BLEDevice]connect', deviceId);
+      // 切断せずに残すと、ペリフェラルが広告を再開せず再スキャンで見つからなくなり、
+      // 次回 connect 冒頭の disconnect もタイムアウトするため、必ず切断してから通知する
+      try {
+        await BleClient.disconnect(deviceId);
+      } catch (disconnectError) {
+        this.logService.error('[DrivingScore][BLEDevice]connect disconnect failed', disconnectError);
+      }
       await this.showConnectFailedDialog();
     }
   }
