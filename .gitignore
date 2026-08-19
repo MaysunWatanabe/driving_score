@@ -1,1 +1,11 @@
 /*.zip
+
+# ProjectSmith の紐付け。作業環境固有かつ signature を含むため共有しない。
+# clone 後は `projectsmith bind --repo-id <id>` で各自生成する (proposal #21)
+.smith
+
+# Claude Code の mode 追跡 / ガードレール状態。ローカル状態のため共有しない (proposal #21)
+.claude/state/
+
+# 各種スクリプトが作る日時付きバックアップ (proposal #21)
+*.bak.[0-9]*-[0-9]*

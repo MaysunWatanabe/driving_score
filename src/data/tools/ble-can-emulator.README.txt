@@ -1,0 +1,583 @@
+===============================================================================
+ BLE 車載機（DrivingCanData）エミュレータ  ble-can-emulator.py
+===============================================================================
+
+開発機（Linux）を BLE ペリフェラルとして動作させ、アプリが期待する車載機に
+なりすまして 12 バイトの CAN パケットを notify する検証用ツール。
+
+実車・実車載機が無くても、アプリの BLE 受信経路（スキャン → 接続 → notify →
+デコード）を実機の Android 端末で検証できる。
+
+
+-------------------------------------------------------------------------------
+ 0. 仕様根拠
+-------------------------------------------------------------------------------
+
+  proposal #14 (synced)  ツールの位置づけ / 広告名・UUID / 12 バイト符号化 /
+                         Linux 開発機のみ / アプリ本体は変更しない / 新規依存ゼロ
+  proposal #15 (synced)  2 フェーズ分割と Phase 1 完了ゲート /
+                         事前入力シミュレーション型のみ採用 /
+                         Phase 1 疎通は cruise.canConnected を使用
+  proposal #10/#12/#13   入力に使うモックセンサログの正準形（本ツールの入力元）
+           (synced)
+  proposal #16 (synced)  エミュレータ実装を 2 系統併存とし、本ツールを既定と
+                         する / 既存の bumble 版は凍結 / 相互排他 /
+                         広告アドレスタイプ public 要件 /
+                         Phase 1 完了ゲートは本ツールで判定
+  proposal #18 (synced)  アプリ側 connect 手順に discoverServices の明示待機を
+                         追加 / エラー時は showConnectFailedDialog の前に
+                         disconnect する（エミュレータ制約「アプリ本体は
+                         変更しない」に対する明示的な例外）
+  proposal #19 (synced)  ライブ集約の起動時 4 センサーゲートを現状追認 /
+                         静置でジャイロ未発火なら記録開始されないことを許容
+  proposal #20 (synced)  Phase 1 = completed（実装 A のみで判定）/
+                         Phase 2 は異常系に限定 /
+                         スコア・診断 E2E は OQ 解消後の別フェーズ /
+                         --rate-ms 100 は暫定据え置き
+
+仕様の正本は ProjectSmith である。本ファイルは実装者向けの手引きであり、
+記述が Smith の応答と食い違った場合は Smith が正しい。
+
+
+-------------------------------------------------------------------------------
+ 1. これは何で、何ではないか
+-------------------------------------------------------------------------------
+
+これは:
+  開発 PC が「本物の車載機のふり」をして、実機の Android アプリと
+  本物の BLE 接続を確立し、CAN データを流し込むツール。
+  アプリから見て本物の車載機と区別がつかないことが要件。
+
+これではない:
+  ui.edit.page から sensor-log をアップロードして DemoData で再生する方式。
+  あちらはアプリ内でのファイル再生であり、BLE スタックを一切通らない。
+  両者は目的が異なる。
+
+  ┌─────────────────┬──────────────────────┬────────────────────────┐
+  │                 │ 本ツール             │ DemoData 方式          │
+  ├─────────────────┼──────────────────────┼────────────────────────┤
+  │ BLE スタック    │ 通る（実接続）       │ 通らない               │
+  │ 必要な機材      │ 開発 PC + 実機 2 台  │ 1 台（ブラウザでも可） │
+  │ 検証できるもの  │ BLE 経路そのもの     │ スコアロジック / UI    │
+  └─────────────────┴──────────────────────┴────────────────────────┘
+
+
+ 1-1. エミュレータは 2 系統ある（proposal #16）
+
+このリポジトリには同じ目的のエミュレータが 2 つある。**既定は本ツール（A）**。
+
+  A（既定）  src/data/tools/ble-can-emulator.py        ← 本ファイルが説明するもの
+  B（代替）  src/tools/ble-can-emulator/               ← 既存。凍結扱い
+
+  ┌───────────────┬────────────────────────┬──────────────────────────┐
+  │               │ A（本ツール・既定）    │ B（代替・フォールバック）│
+  ├───────────────┼────────────────────────┼──────────────────────────┤
+  │ BT スタック   │ BlueZ の D-Bus API     │ bumble を HCI に直結     │
+  │ 追加依存      │ なし（OS 同梱のみ）    │ bumble（venv に pip）    │
+  │ 実行権限      │ sudo 不要              │ 要 sudo                  │
+  │ BlueZ         │ 動かしたまま共存       │ mask + stop して占有     │
+  │ 送出データ    │ mock/*.txt.gz の再生   │ math.sin の合成波        │
+  │ Phase 1 判定  │ こちらで行う           │ 対象外・未検証           │
+  └───────────────┴────────────────────────┴──────────────────────────┘
+
+B に切り替えてよいのは、A が使えない次の場合だけ:
+  - BlueZ が org.bluez.LEAdvertisingManager1 を提供しない
+  - bluetoothctl show の SupportedInstances が 0
+  - A の RegisterAdvertisement / RegisterApplication が失敗する
+
+ ★ 相互排他（MANDATORY）
+
+  A と B は同時に起動できない。B は bluetoothd を止めて HCI を占有するため、
+  B の稼働中は A が使う D-Bus API そのものが消える。
+
+  B を使ったあと A に戻すときは、必ず先に BlueZ を復帰させること:
+
+      sudo src/tools/ble-can-emulator/restore-bluez.sh
+
+  B の run.sh は SIGKILL・ターミナル強制終了で trap が発火せず、
+  bluetooth.service が masked のまま残る。mask は永続設定なので、
+  この状態は **再起動しても直らない**。A が「BlueZ に接続できない」と
+  言い出したら、まず上記スクリプトを実行して復帰させること。
+
+  B のファイル（driving_can_peripheral.py / run.sh / restore-bluez.sh 等）は
+  凍結扱いで、削除・リファクタ・機能追加をしてはならない（proposal #16）。
+
+
+-------------------------------------------------------------------------------
+ 2. 動作要件
+-------------------------------------------------------------------------------
+
+開発 PC 側:
+  - Linux のみ（Windows / macOS は非対応。proposal #14 / #15 の非適用範囲）
+  - Python 3（標準ライブラリのみ使用）
+  - python3-dbus
+  - PyGObject（gi.repository.GLib）
+  - BlueZ 5.72 以降（org.bluez.LEAdvertisingManager1 / GattManager1）
+  - Bluetooth アダプタが peripheral ロールに対応していること
+      確認: hciconfig -a  →  "Link mode:" に PERIPHERAL が含まれること
+  - 広告のアドレスタイプが public であること（→ §8 の status 0x3E を参照）
+      確認: bluetoothctl show  →  1 行目が "Controller XX:.. (public)"
+            /etc/bluetooth/main.conf の Privacy が off（既定）であること
+
+  新規の pip / apt パッケージは追加しない（proposal #14 / #15 で禁止）。
+
+  検証済み環境:
+      Python 3.12.3 / dbus 1.3.2 / BlueZ 5.72
+      hci0 = Realtek BT 5.3、Link mode に PERIPHERAL / Roles: central, peripheral
+
+実機（Android）側:
+  - 本アプリがインストールされていること
+  - Bluetooth が有効であること
+  - 設定の selectedSensorMode が canDataOnly または combination であること
+      ※ smartphoneOnly では BLE 接続処理自体がスキップされるため、
+        エミュレータを起動しても永久に接続されない。最頻出のハマりどころ。
+
+
+-------------------------------------------------------------------------------
+ 3. 使い方
+-------------------------------------------------------------------------------
+
+作業ディレクトリは src/data。
+
+  # Phase 1: 接続確立の疎通確認（proposal #15 §3 が定める疎通用シナリオ）
+  python3 tools/ble-can-emulator.py \
+      --source mock/sensor-log.cruise.canConnected.txt.gz
+
+  # 別シナリオを繰り返し送出（急ブレーキ）
+  # ※ Phase 2 は異常系に限定されており（proposal #20）、シナリオ差し替えは
+  #   Phase 2 の内容ではない。スコア反応の確認は OQ 解消後の別フェーズ。
+  python3 tools/ble-can-emulator.py \
+      --source mock/sensor-log.hard_brake.canConnected.txt.gz --loop
+
+  # 送信周期を変える（既定 100ms）
+  python3 tools/ble-can-emulator.py \
+      --source mock/sensor-log.mixed.canConnected.txt.gz --rate-ms 50 --loop
+
+停止は Ctrl-C。
+
+オプション:
+
+  --source PATH     [必須] 入力にする sensor-log.<scenario>.canConnected.txt.gz
+                    canData を持たない smartphoneOnly の生成物は拒否される。
+
+  --rate-ms N       notify 送信周期 [ms]。既定 100、範囲 10〜1000。
+                    ※ この 100ms は暫定値である。実車載機の実 notify 周期は
+                      仕様・fact に記載が無く、判明した時点で差し替える前提
+                      （proposal #14 §4）。
+
+  --loop            入力の末尾に達したら先頭へ戻って送出を続ける。
+                    指定しない場合、6000 レコード（既定 100ms なら約 10 分）で
+                    送出を終えて待機状態になる。
+
+  --adapter NAME    使用する Bluetooth アダプタ名（既定: hci0）。
+                    ※ BLE 契約・送出データに影響しない実行上の補助オプション。
+
+  --verbose         送出した 12 バイトを毎回表示する（既定は 100 件ごと）。
+                    ※ 同上。
+
+典型的な出力:
+
+  [source] mock/sensor-log.cruise.canConnected.txt.gz
+  [source] 6000 レコードを 12 バイトに符号化しました（先頭: 28 80 80 64 80 2a 30 28 00 00 04 00）
+  [adapter] /org/bluez/hci0
+  [ready] 実機アプリで診断を開始してください。
+  [ready] settings.selectedSensorMode は canDataOnly / combination のいずれかにすること。
+  [ready] 停止は Ctrl-C。
+  [gatt] service 00002310-0000-1000-8000-00805f9b34fb / characteristic 00002311-... を公開しました
+  [adv] LocalName=DrivingCanData で広告を開始しました
+  [notify] 購読開始（アプリが startNotifications を呼びました）
+  [send] #000001 28 80 80 64 80 2a 30 28 00 00 04 00
+
+
+-------------------------------------------------------------------------------
+ 4. BLE 仕様（アプリ側の期待値。変更してはならない）
+-------------------------------------------------------------------------------
+
+  広告 LocalName          DrivingCanData
+                          アプリは result.device.name の「完全一致」でのみ
+                          識別する。1 文字でも違うと永久に検出されない。
+
+  Primary Service UUID    00002310-0000-1000-8000-00805f9b34fb
+  Notify Characteristic   00002311-0000-1000-8000-00805f9b34fb
+  Characteristic プロパティ  notify のみ
+
+  MAC アドレス            固定しない。アプリに BLE_DEVICE_ID 定数はあるが
+                          実装上未使用で、識別は名前のみで行われる。
+
+アプリ側の接続フロー:
+
+  1. BleClient.initialize() → isEnabled() → requestLEScan({services: []})
+     ※ サービス UUID では絞らず、名前で選別している
+  2. 3 秒後にスキャン停止
+       0 件   → 「Bluetooth接続に失敗しました。」ダイアログ（リトライ可）
+       1 件   → 自動接続
+       複数件 → ラジオ選択ダイアログ
+  3. 念のため disconnect してから connect(timeout: 10000)
+  4. discoverServices でサービス探索の完了を待つ（proposal #18 で追加）
+     ※ connect は探索完了前に解決しうる。Android は接続確立時に MTU 交換を
+       自発的に行い、プラグイン 2.3.0 はその onMtuChanged で connect を
+       resolve するため。この待機が無いと空の GATT DB に対して
+       startNotifications を呼び、Characteristic not found で必ず失敗する。
+  5. startNotifications で購読開始 → 12 バイトをそのままデコードへ渡す
+
+  接続に失敗した場合は disconnect してから「Bluetooth接続に失敗しました。」
+  ダイアログを出す（proposal #18）。切断せずに残すとペリフェラルが広告を
+  再開せず、再スキャンで検出できなくなる。
+
+  → エミュレータが起動していない状態で診断を始めると、3 秒後に
+    「Bluetooth接続に失敗しました。」が出る。先にエミュレータを起動しておくこと。
+
+
+-------------------------------------------------------------------------------
+ 5. 12 バイトパケットの仕様
+-------------------------------------------------------------------------------
+
+固定長 12 バイト。offset 5-6 のみ u16 ビッグエンディアン（他は u8）。
+
+  off  型      物理量               アプリ側デコード      エミュレータ側エンコード
+  ---  ------  -------------------  --------------------  --------------------------
+   0   u8      vehicleSpeed         v * 1                 round(v)
+   1   u8      longAcc              v * 0.01 - 1.28       round((v + 1.28) / 0.01)
+   2   u8      latAcc               v * 0.01 - 1.28       round((v + 1.28) / 0.01)
+   3   u8      frontDistance        v * 0.5               round(v / 0.5)
+   4   u8      lateralDistance      v * 0.5 - 64          round((v + 64) / 0.5)
+  5-6  u16 BE  steeringAngle        v * 0.1 - 1080        round((v + 1080) / 0.1)
+   7   u8      accelPedalPosition   v * 1                 round(v)
+   8   u8      brakePressure        v * 1                 round(v)
+   9   u8      brakeSwitch          そのまま              そのまま
+  10   u8      shiftIndication      そのまま              そのまま
+  11   u8      turnSignal           そのまま              そのまま
+
+  ・各フィールドは u8 (0..255) / u16 (0..65535) の表現域にクランプする。
+  ・round は「.5 を上へ」。Python 組込み round() は偶数丸めなので使わず、
+    floor(x + 0.5) で実装している（モックログ側の JS Math.round と揃えるため）。
+
+手検算の例（cruise の 1 レコード目）:
+
+  28 80 80 64 80 2a 30 28 00 00 04 00
+  │  │  │  │  │  └─┬─┘ │  │  │  │  └─ turnSignal        = 0
+  │  │  │  │  │    │    │  │  │  └──── shiftIndication   = 4 (D レンジ)
+  │  │  │  │  │    │    │  │  └─────── brakeSwitch       = 0
+  │  │  │  │  │    │    │  └────────── brakePressure     = 0
+  │  │  │  │  │    │    └───────────── accelPedal        = 0x28 = 40
+  │  │  │  │  │    └────────────────── steeringAngle     = 0x2a30=10800 → 0.0 deg
+  │  │  │  │  └─────────────────────── lateralDistance   = 0x80=128 → 0.0 m
+  │  │  │  └────────────────────────── frontDistance     = 0x64=100 → 50.0 m
+  │  │  └───────────────────────────── latAcc            = 0x80=128 → 0.00 G
+  │  └──────────────────────────────── longAcc           = 0x80=128 → 0.00 G
+  └─────────────────────────────────── vehicleSpeed      = 0x28 = 40 km/h
+
+
+-------------------------------------------------------------------------------
+ 6. 入力ファイル（シナリオ）
+-------------------------------------------------------------------------------
+
+src/data/mock/ にある正準ファイルのうち、canConnected の 5 本が入力に使える。
+いずれも 60 秒 / 10ms 刻み / 6000 レコード、乱数を使わない決定的生成。
+
+  ファイル                                    確認できること
+  ------------------------------------------  --------------------------------
+  sensor-log.cruise.canConnected.txt.gz       減点が出ない基準（満点付近）
+                                              speed 40km/h 一定、longAcc/latAcc/
+                                              steering すべて 0 → 目視検算しやすい
+  sensor-log.accel_decel.canConnected.txt.gz  加速度系スコア（最小 -0.210G）
+  sensor-log.hard_brake.canConnected.txt.gz   ヒヤリ地点マーカー
+                                              longAcc <= -0.35G が 3 エピソード
+  sensor-log.sharp_curve.canConnected.txt.gz  横 G 系スコア
+                                              latAcc 0.300G / steering ±180deg
+  sensor-log.mixed.canConnected.txt.gz        通し確認（上記を内包）
+
+  sensor-log.cruise.smartphoneOnly.txt.gz は canData キー自体を持たないため
+  入力にできない。指定するとエラーで停止する。
+
+これらは tools/gen-mock-sensorlog.mjs で再生成できる（--canonical で 6 本一括）。
+再生成しても同一バイト列になる。
+
+
+-------------------------------------------------------------------------------
+ 7. Phase 1（BLE 接続確立）の完了ゲート  ★ 2026-08-19 に completed
+-------------------------------------------------------------------------------
+
+★ Phase 1 は proposal #20 (synced) により **completed** と確定した。
+  判定は proposal #16 のとおり実装 A のみで行い、実装 B は検証対象外のまま凍結。
+  実測値は §10「検証済み（実機 2026-08-19）」を参照。
+  以下は再検証したい場合の手順として残す。
+
+proposal #15 が定める完了条件。以下 4 点がすべて成立したとき Phase 1 完了。
+
+  (a) 開発 PC が LocalName=DrivingCanData で LE 広告を出している
+  (b) 実機アプリの 3 秒スキャンで当該デバイスが 1 件検出され、自動接続に進む
+  (c) connect(timeout:10000) が成功し startNotifications が確立する
+  (d) characteristic 00002311-... の 12 バイト値が実機に到達していることを
+      logcat で実測確認できる
+
+  ※ 「運転診断が回ること」「スコアが変化すること」は完了条件に含まれない。
+
+    理由: アプリのセンサー集約は GPS・加速度・ジャイロ・磁力の 4 つが揃うまで
+    毎 tick 即 return する。ジャイロは deviceorientationabsolute 由来で、
+    端末を静置していると通知が飛んでこない。つまり BLE が完璧でも、机に
+    置いたままでは診断が回らない可能性がある。BLE 経路の成否と診断の成否を
+    同じゲートに載せると切り分けができなくなるため、意図的に分けている。
+
+  ※ この 4 センサーゲートは proposal #19 (synced) で仕様として追認された。
+    実測した挙動は次のとおり:
+      - 「集約の打ち切り」ではなく「その tick の skip」である
+      - lastXxx を null に戻す代入は各 initializeXxxListener() の冒頭のみで、
+        運転中に null へ戻る経路が無い。したがって実質的な起動時ゲートであり、
+        4 つが 1 回ずつ発火した時点で恒久的に解除される
+      - canData はゲート対象外。null なら {repeat: -1} で代替されるため、
+        canDataOnly でもスマホ 4 センサーが揃うまで記録は開始されない
+      - DemoData 件数 > 0 のデモ再生経路はこのゲートを通らない
+    静置で記録が始まらないのは仕様どおりの挙動であり、不具合ではない。
+    アプリ側にテスト用の迂回路（センサー欠落時のダミー補完など）を入れることは
+    引き続き禁止されている（proposal #19 は実装変更なしの追認である）。
+
+手順:
+
+  1. 開発 PC でエミュレータを起動
+       cd src/data
+       python3 tools/ble-can-emulator.py \
+           --source mock/sensor-log.cruise.canConnected.txt.gz --loop
+     → [adv] LocalName=DrivingCanData で広告を開始しました  が出ることを確認 …(a)
+
+  2. 実機の設定で selectedSensorMode を canDataOnly か combination にする
+
+  3. 実機で logcat を流しておく
+       adb logcat | grep -i "DrivingScore\|Bluetooth\|Capacitor"
+
+  4. 実機アプリで診断を開始
+     → 3 秒スキャン後に自動接続されること …(b)
+     → 接続成功と通知購読開始が logcat に出ること …(c)
+     → PC 側に [notify] 購読開始 が出る
+     → 12 バイトが実機に届いていること …(d)
+
+  5. PC 側の [send] 行に出る 16 進と、logcat のデコード結果を突き合わせる
+     cruise なら speed=40 / longAcc=0.00 / latAcc=0.00 / steering=0.0 で一定。
+
+
+-------------------------------------------------------------------------------
+ 8. うまくいかないとき
+-------------------------------------------------------------------------------
+
+「Bluetooth接続に失敗しました。」が出て検出されない
+  - selectedSensorMode が smartphoneOnly のままではないか（最頻出）
+  - エミュレータを先に起動しているか（アプリのスキャンは 3 秒で打ち切られる）
+  - PC 側に [adv] LocalName=... の行が出ているか
+  - 実機の Bluetooth と位置情報権限が有効か
+
+検出はされるが接続が確立しない（GATT status 0x3E）
+  ★ 広告のアドレスタイプが public でない可能性が高い。
+
+  Android の @capacitor-community/bluetooth-le は addressType=public 前提で
+  接続してくるため、こちらが random static アドレスで広告していると
+  GATT 接続の確立が status 0x3E で失敗する。
+  （これは既存の bumble 版エミュレータで実際に踏んだ問題。proposal #16 で
+    本ツール側の知見として移植した。）
+
+  本ツールはアドレスタイプを明示指定せず BlueZ の既定に従うため、
+  次の 2 点を確認すること:
+
+      bluetoothctl show | head -1
+        → "Controller XX:XX:XX:XX:XX:XX (public)" と出ること
+           (random) と出る場合は public にする必要がある
+
+      grep -n "^Privacy" /etc/bluetooth/main.conf
+        → 何も出ない（= コメントアウトされた既定 off）か、
+           "Privacy = off" であること。device / network になっていると
+           RPA（ランダム化アドレス）で広告してしまう
+
+エミュレータ起動時に登録エラーが出る
+  - [ERROR] LE 広告 の登録に失敗 → 他のプロセスが広告枠を使っていないか。
+    ActiveInstances / SupportedInstances を確認:
+      busctl get-property org.bluez /org/bluez/hci0 \
+             org.bluez.LEAdvertisingManager1 ActiveInstances
+  - アダプタが peripheral 非対応 → hciconfig -a の Link mode を確認
+
+BlueZ / D-Bus に接続できない、hci0 が見つからない
+  - 代替エミュレータ B（src/tools/ble-can-emulator/）を使ったあと、
+    bluetooth.service が masked のまま残っていないか。§1-1 の相互排他を参照。
+      systemctl is-active bluetooth.service    → inactive なら該当
+      systemctl is-enabled bluetooth.service   → masked なら該当
+    復帰:
+      sudo src/tools/ble-can-emulator/restore-bluez.sh
+    mask は永続なので、この状態は再起動しても直らない。
+
+接続はできるが notify が届かない
+  - PC 側に [notify] 購読開始 が出ているか。出ていなければアプリが
+    startNotifications に到達していない（接続直後で落ちている可能性）
+
+接続直後に logcat へ Characteristic not found が出て失敗する
+  ★ proposal #18 の ble.ts 修正が入っていないビルドである可能性が高い。
+
+  commit 1cf7df9 より前のビルドでは connect がサービス探索の完了を待たずに
+  解決するため、空の GATT DB に対して startNotifications を呼び、
+  writeDescriptor|00002310|00002311|00002902 が Characteristic not found で
+  拒否される。探索完了は接続から 800ms 以上かかる一方、アプリは数 ms で
+  startNotifications を呼ぶため、構造的に必ず負ける。
+
+  該当ビルドかどうかは logcat で判別できる:
+      修正後 … resolve: discoverServices Services discovered. が
+               startNotification の前に出る
+      修正前 … discoverServices が一度も出ず、
+               reject: writeDescriptor|... Characteristic not found が出る
+
+パイプに流すと出力が見えない
+  - 行バッファに固定してあるので通常は問題ない。
+    `| head` と組み合わせた場合のみ SIGPIPE で切れることがある。
+    ログを取るなら `> emu.log 2>&1` か `| tee emu.log` を使う。
+
+診断は始まるがスコアが動かない
+  - §7 の「静置問題」に該当する可能性が高い。Phase 1 の完了条件外であり、
+    アプリ側を独断で改修してはならない。open question として記録すること。
+
+
+-------------------------------------------------------------------------------
+ 9. 制約・非適用範囲（proposal #14 / #15 / #16 で明示）
+-------------------------------------------------------------------------------
+
+本ツールの作業では次を行わない。必要になった場合は propose_decision を通す。
+
+  - アプリ本体（src/data/src/app/**）の変更
+  - 代替エミュレータ B（src/tools/ble-can-emulator/）の削除・リファクタ・
+    機能追加。B は凍結扱い（proposal #16）
+  - 本ツールへの bumble 導入、B の D-Bus 化。互いの方式は混ぜない
+  - B への実データ再生機能の移植
+  - センサー集約の 4 センサー必須判定の緩和・迂回
+    （proposal #19 で現状追認が確定。緩和は引き続き行わない）
+  - 切断後の自動再接続ポリシーの確定
+    （proposal #20 により未決のまま据え置き。Phase 2 には含めない）
+  - canDataOnly と combination のセンサー購読差の確定
+    （proposal #20 により未決のまま据え置き。Phase 2 には含めない）
+  - canConnected 5 シナリオでのスコア反応の検証、運転診断の通し E2E、
+    DB 保存・履歴反映の確認
+    （proposal #20 により Phase 2 の対象外。上記 2 つの OQ が解消された後の
+      別フェーズで扱う）
+  - Windows / macOS 開発機での対応
+  - リアルタイム操作型（対話 CLI / GUI で速度・ブレーキ・操舵をその場で
+    動かす方式）の実装 … 本件では不採用。入力の再現性が失われ、スコア
+    ロジック変更時の回帰比較が成立しないため。
+
+
+-------------------------------------------------------------------------------
+ 10. 検証済みの事項 / 未検証の事項
+-------------------------------------------------------------------------------
+
+検証済み（開発 PC 上）:
+  - 符号化の正しさ: 5 シナリオ 30,000 レコードすべてについて、アプリ側の
+    デコード式で逆変換した結果が元の canData と完全一致（誤差 0）
+  - smartphoneOnly 入力の拒否（終了コード 1）
+  - --rate-ms 範囲外の拒否（終了コード 1）
+  - 入力ファイル不在時のエラー（終了コード 1）
+  - GATT service / characteristic の D-Bus 公開成功
+  - LE 広告の登録成功、BlueZ 側 ActiveInstances = 1
+  - アダプタの公開 UUID 一覧に 00002310-... が載ること
+  - コントローラのアドレスタイプが public であること
+      bluetoothctl show → "Controller 24:B2:B9:7B:F0:AA (public)"
+      /etc/bluetooth/main.conf の Privacy は "#Privacy = off"（既定 off）
+
+検証済み（実機 2026-08-19）:
+
+  実機 SH-M29 (AQUOS sense9) / selectedSensorMode = canDataOnly（logcat 実測）/
+  実装 A + cruise.canConnected --loop / --rate-ms は既定 100。
+  記録は record_implementation run_id=20260819-002 (record_id=9)。
+
+  - Phase 1 完了ゲート (a) LE 広告
+      [adv] LocalName=DrivingCanData / ActiveInstances=1
+  - Phase 1 完了ゲート (b) 実機スキャンでの検出と自動接続
+      requestLEScan {"device":{"deviceId":"24:B2:B9:7B:F0:AA","name":"DrivingCanData"},
+                     "rssi":-45,"uuids":["00002310-0000-1000-8000-00805f9b34fb"]}
+  - Phase 1 完了ゲート (c) connect 成功と startNotifications 確立
+      onConnected() connId=6 / onConfigureMTU status=0 mtu=517
+      resolve: discoverServices Services discovered.（探索完了まで 846ms）
+      resolve: writeDescriptor|00002310|00002311|00002902 Descriptor successfully written.
+  - Phase 1 完了ゲート (d) 12 バイトの実機到達（logcat 確認）
+      Notifying listeners for event notification|...|00002311-... を 1066 件受信
+      106.918s / 平均間隔 100.4ms（期待 100ms）/ 取りこぼし 0.39%
+  - 広告アドレスタイプ public で実際に GATT 接続が確立すること
+      §8 の status 0x3E は発生せず、public 広告で接続確立を確認
+
+  ※ 上記の実測により、proposal #20 (synced) で Phase 1 = completed が確定した。
+
+  ※ (c) が通るのは proposal #18 (synced) の ble.ts 修正（connect 後に
+    BleClient.discoverServices を await する）が入っているビルドに限る。
+    修正前は探索完了前に startNotifications を呼び、Characteristic not found で
+    決定的に失敗していた（commit 1cf7df9 より前のビルドでは再現しない）。
+
+  ※ 検証中に connect が 1 回 Connection timeout で失敗したが、proposal #18 の
+    もう一方の修正（catch 内で showConnectFailedDialog の前に disconnect）により
+    リトライ操作 1 回で復帰した。修正前はアプリ強制終了まで BLE が使用不能になっていた。
+
+未検証（実機の Android 端末が必要）:
+  - 静置状態で運転診断が成立するか
+    proposal #19 (synced) により、実センサー経路では geolocation / acceleration /
+    gyroscope / magnetometer の 4 つが揃うまで記録を開始しないことが仕様として確定した。
+    静置でジャイロ（deviceorientationabsolute）が発火しない場合に記録が始まらないのは
+    仕様どおりの挙動であり、不具合ではない。端末を手に持って操作する限り 4 つとも
+    発火し、運転診断を開始から終了まで通して実行できることは 2026-08-19 に確認済み。
+  - Phase 2（異常系）の各項目。§11 を参照
+  - canConnected 5 シナリオでスコアロジックが期待どおり反応すること
+    （proposal #20 により Phase 2 の対象外。自動再接続ポリシーと
+      canDataOnly / combination の購読差が確定した後の別フェーズで扱う）
+
+代替エミュレータ B について:
+  - B が実機で動作した実績があるかは不明。Phase 1 完了ゲートの判定対象外
+    （proposal #16）。B の検証状況は未検証のまま据え置く。
+
+
+-------------------------------------------------------------------------------
+ 11. Phase 2（異常系）
+-------------------------------------------------------------------------------
+
+proposal #20 (synced) により、Phase 2 は **異常系に限定** される。
+運転診断の通し E2E・スコア反応・DB 保存・履歴反映は Phase 2 に含まれず、
+下記「Phase 2 に含めないもの」の OQ が解消された後の別フェーズで扱う。
+
+対象は次の 4 項目。いずれも未着手。
+
+ (2-1) 切断
+   走行中に接続が切れたときのアプリ側の挙動を確認する。
+   エミュレータを Ctrl-C で止める、または PC 側から
+   `bluetoothctl disconnect <実機アドレス>` で切る。
+
+   ※ 現状、切断後の自動再接続ポリシーは未決（proposal #20 で据え置きが確定）。
+     したがって本項目は「どう振る舞うべきか」の判定ではなく
+     「実際にどう振る舞うか」の観測に留める。観測結果は propose_decision の
+     入力材料とする。
+
+ (2-2) 不正ペイロード
+   12 バイト固定長の契約（§5）を破る値を送ったときの挙動を確認する。
+   長さ違い（11 / 13 バイト）、全 0x00、全 0xFF など。
+
+   ※ エミュレータ本体に不正値送出機能は無い。本項目の実施には
+     ble-can-emulator.py への一時的な改造か専用オプションの追加が必要で、
+     それ自体が仕様判断になるため、着手前に propose_decision を通すこと。
+
+ (2-3) rate 境界
+   --rate-ms の下限 10 / 上限 1000 の境界値で送出し、取りこぼし率を測る。
+
+   ※ 既定 100ms は proposal #14 §4 / #20 により暫定値のまま据え置き。
+     実車載機の実 notify 周期が不明なため、境界測定の結果をもって
+     既定値を確定させてはならない。測定値は fact として記録するに留める。
+
+   参考実測（Phase 1 / 2026-08-19、--rate-ms 100）:
+     notify 1066 件 / 106.918s / 平均間隔 100.4ms / 取りこぼし 0.39%
+     接続間隔は interval=6（7.5ms）にネゴシエートされており、
+     10ms notify も物理的には可能と見られるが未測定。
+
+ (2-4) smartphoneOnly 入力拒否の回帰
+   canData を持たない sensor-log.cruise.smartphoneOnly.txt.gz を --source に
+   指定したとき、終了コード 1 で拒否されることを確認する。
+
+   ※ これは開発 PC 上で完結し、実機を必要としない。§10 の「検証済み（開発 PC 上）」
+     に初回実装時の確認結果があるが、回帰として Phase 2 で再確認する。
+
+Phase 2 に含めないもの（proposal #20 で確定）:
+
+  - 切断後の自動再接続ポリシーの確定（未決のまま据え置き）
+  - canDataOnly と combination のセンサー購読差の確定（未決のまま据え置き）
+  - canConnected 5 シナリオでのスコア反応の検証
+  - 運転診断の開始〜終了の通し E2E、DB 保存・履歴反映の確認
+
+  上 2 つは OQ であり、これが解消されるまで下 2 つの別フェーズには進めない。
+
+===============================================================================
