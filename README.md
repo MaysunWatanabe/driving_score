@@ -124,6 +124,77 @@ cd src/data
 node tools/gen-mock-sensorlog.mjs --canonical   # 正準 6 ファイルを一括生成
 ```
 
+生成されたデータの構造・シナリオ別の値の振れ幅・使い方は `src/data/mock/README.md` を参照。
+
+---
+
+## ブラウザでデモ再生する（実車なしでスコアロジックを確認する）
+
+`ui.edit.page`（`/edit`）にセンサログを取り込み、運転診断を実行してスコアとグラフを確認する。
+実車も実機も不要。**BLE スタックは通らない**ので、BLE 経路の検証には使えない（そちらは
+BLE エミュレータ + 実機）。
+
+> **この導線はブラウザ専用。** `edit.page.html` の「センサーログ取込」「運転診断実行」ボタンは
+> `*ngIf="!hasAndroid"` で囲まれており、Android 実機ではボタン自体が表示されない
+> （`hasAndroid = (Capacitor.getPlatform() == 'android')`）。
+
+### 手順
+
+1. dev server を起動する。
+
+   ```bash
+   cd src/data
+   npx ng serve --port 4200
+   ```
+
+2. ブラウザで `http://localhost:4200/` を開く。
+
+3. **ログイン** をクリックし、ID / PASSWORD を入力してログインする。
+
+   ```
+   ID       : test
+   PASSWORD : 12345678
+   ```
+
+   非 Cordova 環境では `user-db.service.ts` の `selectUser()` が資格情報を問わず
+   `User.dummy()` を返すため、実際には任意の値でログインできる。
+   上記は `User.dummy()` が持つ値（`user.ts`）。
+
+4. 「ログインしました。」ダイアログを閉じ、`http://localhost:4200/edit` へ移動する。
+
+5. **センサーログ取込** をクリックし、`src/data/mock/` の `.txt.gz` を選ぶ。
+   取り込みに成功するとボタンが「センサーログクリア」に変わり、
+   コンソールに `openSensorLogFiles finish. sensor data size=6000` が出る。
+
+6. **運転診断実行** をクリックする。6000 レコード × 10ms で、実時間**約 60 秒**かかる。
+   実行中はボタンが「運転診断停止」に変わる。
+
+7. 完了すると「運転診断 正常終了」と【運転診断結果】が表示され、
+   センサーグラフ（Chart.js）が描画される。
+
+`.webm` を一緒に取り込むと【運転動画】欄で同期再生できる。センサログだけでも診断は動く。
+
+### 確認できること / できないこと
+
+| | |
+|---|---|
+| 確認できる | 総合スコア / アクセル・ブレーキ操作の丁寧さ / ハンドル操作の安定性、センサー値の表示、センサーグラフ、ヒヤリ地点の検知ログ |
+| 確認できない | BLE 実通信、運転診断の本番フロー（診断開始 → DB 保存 → 履歴表示）、実機固有の挙動 |
+
+### 自動化する場合
+
+Playwright で回せる。`#upload_gz_files` に `setInputFiles()` で直接流し込むと
+OS のファイルダイアログを回避できる。
+
+```js
+await page.locator('#upload_gz_files').setInputFiles(mockPath);
+await page.getByRole('button', { name: /運転診断\s*実行/ }).click();
+// 「運転診断停止」ボタンが消えるまで待つ（約 60 秒）
+```
+
+Playwright はプロジェクトの依存には**追加しない**（§12-1「環境は FIX のまま」）。
+必要なときにリポジトリ外の作業ディレクトリへ入れて使うこと。
+
 ---
 
 ## テスト
