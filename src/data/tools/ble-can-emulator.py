@@ -150,10 +150,58 @@ def encode_can_data(can):
 # 入力（proposal #15 §2 — 事前入力シミュレーション型）
 # ---------------------------------------------------------------------------
 
-def load_can_frames(path):
+# 10ms 刻みのモックレコードを 100ms の 1 フレームへ集約する単位（proposal #25 / #26）。
+# --rate-ms とは連動しない。#25 / #26 は集約数を 10 固定として決定している。
+AGGREGATE_RECORDS = 10
+
+# 集約時に区間平均を取るフィールド（proposal #25 の 5 つ + #26 の steeringAngle）
+_MEAN_FIELDS = (
+    'vehicleSpeed', 'longAcc', 'latAcc', 'frontDistance', 'lateralDistance',
+    'steeringAngle',
+)
+
+# 集約時に区間先頭の値を採るフィールド
+#   brakeSwitch / shiftIndication / turnSignal は列挙値のため（proposal #25）
+#   accelPedalPosition / brakePressure は proposal #13 §4 の 3 状態規則が
+#   離散値のみを取るため、平均すると規則に存在しない中間値が出る（proposal #26）
+_FIRST_FIELDS = (
+    'accelPedalPosition', 'brakePressure',
+    'brakeSwitch', 'shiftIndication', 'turnSignal',
+)
+
+
+def aggregate_can_records(cans, group=AGGREGATE_RECORDS):
     """
-    sensor-log.<scenario>.canConnected.txt.gz を読み、各行の sensor.canData のみを
+    10ms 刻みの canData を group 件ずつ集約し、100ms 相当の canData を返す
+    （proposal #25 / #26）。
+
+    実車載機は 100ms 間隔で canData を送出し、設計書は vehicleSpeed / longAcc /
+    latAcc / frontDistance / lateralDistance に「※平均値」と付記している。
+    モックは 10ms 刻みなので、10 件を 1 フレームへ畳んで実車と同じ時間軸にする。
+
+    末尾が group で割り切れない場合、残り全部で平均を取る（切り捨てない / #26）。
+    """
+    out = []
+    for start in range(0, len(cans), group):
+        window = cans[start:start + group]
+        head = window[0]
+        merged = dict(head)
+        n = len(window)
+        for key in _MEAN_FIELDS:
+            merged[key] = sum(c.get(key, 0.0) for c in window) / n
+        for key in _FIRST_FIELDS:
+            merged[key] = head.get(key, 0)
+        out.append(merged)
+    return out
+
+
+def load_can_frames(path, raw=False):
+    """
+    sensor-log.<scenario>.canConnected.txt.gz を読み、sensor.canData を
     12 バイトに符号化したリストを返す。
+
+    既定では 10 レコードを 1 フレームへ集約する（proposal #25 / #26）。
+    raw=True のときは 1 レコード = 1 フレームとして集約せずに符号化する。
 
     canData を持たない生成物（smartphoneOnly）は入力として拒否する（proposal #15 §2）。
     """
@@ -168,7 +216,7 @@ def load_can_frames(path):
     if not lines:
         raise SystemExit('[ERROR] 入力ファイルが空です: %s' % path)
 
-    frames = []
+    cans = []
     for lineno, line in enumerate(lines, start=1):
         try:
             record = json.loads(line)
@@ -183,9 +231,13 @@ def load_can_frames(path):
                 '        sensor-log.<scenario>.canConnected.txt.gz を指定してください。'
                 % (path, lineno)
             )
-        frames.append(encode_can_data(can))
+        cans.append(can)
 
-    return frames
+    if not raw:
+        cans = aggregate_can_records(cans)
+
+    # 平均後に #22 の量子化を適用してから符号化する（encode_can_data が floor(x+0.5) で丸める）
+    return [encode_can_data(can) for can in cans]
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +497,12 @@ def parse_args(argv):
         '--loop', action='store_true',
         help='入力の末尾に達したら先頭へ戻って送出を続ける',
     )
+    parser.add_argument(
+        '--raw', action='store_true',
+        help='集約せず 1 レコード = 1 notify で送出する（proposal #25）。'
+             'モックは 10ms 刻みなので再生が 1/10 速度になるが、'
+             '送出値がモックの canData と 1 対 1 対応するためバイト単位の突き合わせに使える',
+    )
     # 以下 2 つは BLE 契約・送出データに影響しない実行上の補助オプション
     parser.add_argument(
         '--adapter', default='hci0', metavar='NAME',
@@ -470,10 +528,20 @@ def main(argv=None):
             % (MIN_RATE_MS, MAX_RATE_MS, args.rate_ms)
         )
 
-    frames = load_can_frames(args.source)
+    frames = load_can_frames(args.source, raw=args.raw)
     print('[source] %s' % args.source)
-    print('[source] %d レコードを 12 バイトに符号化しました（先頭: %s）'
-          % (len(frames), frames[0].hex(' ')))
+    if args.raw:
+        print('[source] --raw: 集約せず %d レコードを 12 バイトに符号化しました（先頭: %s）'
+              % (len(frames), frames[0].hex(' ')))
+        print('[source] 再生はモック時間の 1/10 速度になります'
+              '（%d 件 × %dms = 実時間 %.1f 分）'
+              % (len(frames), args.rate_ms, len(frames) * args.rate_ms / 60000.0))
+    else:
+        print('[source] %d レコードを %d 件ずつ集約し %d フレームに符号化しました（先頭: %s）'
+              % (len(frames) * AGGREGATE_RECORDS, AGGREGATE_RECORDS, len(frames),
+                 frames[0].hex(' ')))
+        print('[source] 実時間 %.1f 秒で送出します（%d 件 × %dms）'
+              % (len(frames) * args.rate_ms / 1000.0, len(frames), args.rate_ms))
 
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     bus = dbus.SystemBus()
