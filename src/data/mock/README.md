@@ -10,6 +10,7 @@
 | #10 | synced | 正準レコードスキーマ / 5 シナリオ / 生成スクリプト / DemoData 件数閾値 0 |
 | #12 | synced | scenario × sensorMode 対応 / 出力ファイル名 / mixed・hard_brake・sharp_curve の決定的プロファイル / 端末取付姿勢 / canData 量子化 |
 | #13 | synced | T0 = 2026-07-01T10:00:00.000+09:00 固定 / 初期 heading 0.0 / accel_decel の 20s 周期 / accelPedal・brakePressure・brakeSwitch の longAcc ±0.02G 閾値による状態別規則 |
+| #22 | synced | 設計書の物理値域を仕様へ昇格し、#12 §7 の量子化と #13 §4 の状態別規則を物理値域内へ改訂 |
 | #14, #15 | synced | BLE エミュレータの入力として使う場合の制約 |
 
 仕様の正本は ProjectSmith。記述が Smith の応答と食い違った場合は Smith が正しい。
@@ -78,13 +79,16 @@ DemoData 側の必須フィールドは `videoTime / geolocation / acceleration 
 
 ## シナリオ別の値の振れ幅（実測）
 
-| | vehicleSpeed [km/h] | longAcc [G] | latAcc [G] | steeringAngle [deg] | brakePressure | accelIncGravity.x | accelIncGravity.y | gyroscope.alpha |
-|---|---|---|---|---|---|---|---|---|
-| cruise | 40 固定 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| accel_decel | 0 〜 60 | -0.210 〜 +0.210 | 0 | 0 | 0 〜 200 | 0 | -2.083 〜 +2.083 | 0 |
-| hard_brake | 10 〜 60 | -0.470 〜 +0.350 | 0 | 0 | 0 〜 200 | 0 | -4.630 〜 +3.472 | 0 |
-| sharp_curve | 40 固定 | 0 | -0.300 〜 +0.300 | -180 〜 +180 | 0 | -2.942 〜 +2.942 | 0 | 0 〜 38.632 |
-| mixed | 0 〜 60 | -0.470 〜 +0.350 | -0.300 〜 +0.300 | -180 〜 +180 | 0 〜 200 | -2.942 〜 +2.942 | -4.630 〜 +3.472 | 0 〜 38.632 |
+| | vehicleSpeed [km/h] | longAcc [G] | latAcc [G] | steeringAngle [deg] | accelPedal [%] | brakePressure [bar] | accelIncGravity.x | accelIncGravity.y | gyroscope.alpha |
+|---|---|---|---|---|---|---|---|---|---|
+| cruise | 40 固定 | 0 | 0 | 0 | 40 | 0 | 0 | 0 | 0 |
+| accel_decel | 0 〜 60 | -0.212 〜 +0.212 | 0 | 0 | 0 〜 100 | 0 〜 126 | 0 | -2.083 〜 +2.083 | 0 |
+| hard_brake | 10 〜 60 | -0.472 〜 +0.350 | 0 | 0 | 0 〜 100 | 0 〜 126 | 0 | -4.630 〜 +3.472 | 0 |
+| sharp_curve | 40 固定 | 0 | -0.300 〜 +0.300 | -180 〜 +180 | 40 | 0 | -2.942 〜 +2.942 | 0 | 0 〜 38.632 |
+| mixed | 0 〜 60 | -0.472 〜 +0.350 | -0.300 〜 +0.300 | -180 〜 +180 | 0 〜 100 | 0 〜 126 | -2.942 〜 +2.942 | -4.630 〜 +3.472 | 0 〜 38.632 |
+
+すべて proposal #22 が確定した物理値域内に収まっている（`accelPedalPosition` 0〜100 %、
+`brakePressure` 0〜126 bar、`steeringAngle` ±1080 deg、`frontDistance` 0〜127 m）。
 
 `geolocation.speed` は `vehicleSpeed` に対応（cruise 11.111 m/s 固定、accel_decel / hard_brake / mixed は 0 〜 16.667 m/s）。
 
@@ -144,6 +148,24 @@ python3 tools/ble-can-emulator.py \
   （notify 1066 件 / 平均間隔 100.4ms / 取りこぼし 0.39%）
 - 同日、ブラウザで 4 シナリオ（cruise / accel_decel / hard_brake / sharp_curve）を
   `/edit` から取り込み、運転診断が正常終了することを確認
+
+## 値域の是正について（proposal #22）
+
+2026-08-20 まで、`accel_decel` / `hard_brake` / `mixed` の 3 ファイルは
+`brakePressure` 最大 200、`accelPedalPosition` 最大 120 という**物理的にあり得ない値**を
+含んでいた。原因は proposal #12 §7 が量子化範囲を BLE デコード式から逆算した
+バイト値域 `[0,255]` として定め、設計書の物理値域（% 0〜100 / bar 0〜126）を
+参照していなかったこと。
+
+proposal #22 で設計書の物理値域を仕様へ昇格し、生成器と正準 6 ファイルを是正した。
+状態判定の閾値（longAcc ±0.02G）と 3 状態という構造は #13 のまま変更していない。
+値を上限へ丸めただけである。
+
+  加速状態  accelPedalPosition 120 → 100
+  減速状態  brakePressure      200 → 126
+
+バイト列が変わったのは上記 3 ファイルのみ。`cruise`（両モード）と `sharp_curve` は
+元から値域内だったため不変。
 
 ## 既知の未解決事項
 

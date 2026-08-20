@@ -391,7 +391,7 @@ export class SensorService {
         turnSignal: turnSignal,
         repeat: -1
       };
-      //self.logService.debug('[DrivingScore][SensorService]', self.lastCanData);
+      self.logService.debug('[DrivingScore][SensorService]', self.lastCanData);
     });
   }
 

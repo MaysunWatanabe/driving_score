@@ -245,13 +245,21 @@ function evaluateScenario(scenario, localSec, scopeSec) {
 // レコード生成
 // ---------------------------------------------------------------------------
 
-/** 量子化前 longAcc からペダル・ブレーキ状態を決める (#13) */
+/**
+ * 量子化前 longAcc からペダル・ブレーキ状態を決める (#13 の 3 状態規則)
+ *
+ * 値は proposal #22 により設計書の物理値域内へ改訂した。
+ * accelPedalPosition は % (0..100)、brakePressure は bar (0..126)。
+ * 旧値 120 / 200 は #12 §7 が BLE デコード式から逆算したバイト値域 [0,255] を
+ * 採っていたことに由来し、物理量としてはあり得ない値だった。
+ * 状態判定の閾値と 3 状態という構造は #13 のまま変更していない。
+ */
 function pedalState(longAccG) {
   if (longAccG > PEDAL_STATE_THRESHOLD_G) {
-    return { accelPedalPosition: 120, brakePressure: 0, brakeSwitch: 0 };
+    return { accelPedalPosition: 100, brakePressure: 0, brakeSwitch: 0 };
   }
   if (longAccG < -PEDAL_STATE_THRESHOLD_G) {
-    return { accelPedalPosition: 0, brakePressure: 200, brakeSwitch: 1 };
+    return { accelPedalPosition: 0, brakePressure: 126, brakeSwitch: 1 };
   }
   return { accelPedalPosition: 40, brakePressure: 0, brakeSwitch: 0 };
 }
@@ -332,11 +340,11 @@ function buildSensorLog({ scenario, sensorMode, durationSec, baseMs }) {
         vehicleSpeed: quantize(speedKmh, 1, 0, 255),
         longAcc: quantize(longAccG, 0.01, -1.28, 1.27),
         latAcc: quantize(latAccG, 0.01, -1.28, 1.27),
-        frontDistance: quantize(CAN_FRONT_DISTANCE, 0.5, 0, 127.5),
+        frontDistance: quantize(CAN_FRONT_DISTANCE, 0.5, 0, 127),
         lateralDistance: quantize(CAN_LATERAL_DISTANCE, 0.5, -64, 63.5),
-        steeringAngle: quantize(steeringDeg, 0.1, -1080, 1471.5),
-        accelPedalPosition: quantize(pedal.accelPedalPosition, 1, 0, 255),
-        brakePressure: quantize(pedal.brakePressure, 1, 0, 255),
+        steeringAngle: quantize(steeringDeg, 0.1, -1080, 1080),
+        accelPedalPosition: quantize(pedal.accelPedalPosition, 1, 0, 100),
+        brakePressure: quantize(pedal.brakePressure, 1, 0, 126),
         brakeSwitch: pedal.brakeSwitch,
         shiftIndication: CAN_SHIFT_INDICATION,
         turnSignal: CAN_TURN_SIGNAL,
