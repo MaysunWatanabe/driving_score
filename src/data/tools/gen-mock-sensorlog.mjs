@@ -62,6 +62,45 @@ const CAN_TURN_SIGNAL = 0;
 /** pedal 状態判定の閾値 [G]。longAcc 量子化ステップ 0.01G の 2 倍 (#13) */
 const PEDAL_STATE_THRESHOLD_G = 0.02;
 
+// ---------------------------------------------------------------------------
+// トリップ構成（出車 → 走行 → 駐車）— proposal #32
+//
+// canConnected の 5 シナリオは 1 トリップとして完結させる。P から始まり P で終わる。
+// 駐車行動 (D→R→P) を含めることで scoreLogicFunction の parkingAction が発火し、
+// score1 / scoreA(歩行機能) / scoreB(認知機能) が算出されるようになる。
+//
+// 評価窓は D→R の 8 秒前から始まる（searchIndex(canDataList, i, 8000)）。
+// 特徴的走行はその外に置き、直前は全シナリオ共通の減速にする。
+// こうすると score1 は駐車の巧拙だけを測り、シナリオ差は score2 とヒヤリに出る。
+//
+// smartphoneOnly は canData を持たないため shiftIndication を表現できない。
+// 従来どおり全区間走行のままとする（#32）。
+// ---------------------------------------------------------------------------
+
+const TRIP = {
+  departEnd:   0.05,  // P で停止（中間で P→D）
+  launchEnd:   0.10,  // 0 -> 40 km/h
+  driveEnd:    0.72,  // シナリオ固有の走行
+  slowEnd:     0.81,  // 40 -> 0 km/h
+  haltEnd:     0.85,  // 停止保持（この終端で D→R）
+  reverseEnd:  0.95,  // 後退（この終端で R→P）
+};
+
+const SHIFT_P = 1;
+const SHIFT_R = 2;
+const SHIFT_D = 4;
+
+// 発進・減速は #13 が accel_decel に定めた緩加減速をそのまま使う
+const TRIP_LAUNCH_ACC_G = 0.21;
+const TRIP_SLOW_ACC_G = -0.21;
+const TRIP_CRUISE_KMH = 40;
+
+// 後退プロファイル（#32 で確定。仕様上の根拠は無く徐行を表す設定値）
+const TRIP_REVERSE_KMH = 8;
+const TRIP_REVERSE_ACC_G = 0.08;
+const TRIP_REVERSE_PEDAL = 15;
+const TRIP_REVERSE_BRAKE = 60;
+
 /** sharp_curve のヨーレート正弦波の周期 [s] (#12) */
 const CURVE_PERIOD_SEC = 8.0;
 /** sharp_curve の目標横 G [G] (#10 / #12) */
@@ -241,6 +280,100 @@ function evaluateScenario(scenario, localSec, scopeSec) {
   }
 }
 
+/**
+ * トリップ構成でラップして 1 tick ぶんの状態を返す (proposal #32)。
+ *
+ * 戻り値に shiftIndication と、ペダル系の上書き値 (pedal) を含める。
+ * pedal が null の区間は #13 の 3 状態規則 (longAcc の ±0.02G 閾値) に委ねる。
+ * 後退区間は longAcc の符号の意味が前進と逆（加速が負・減速が正）なので
+ * 3 状態規則を適用せず直接指定する。
+ */
+function evaluateTrip(scenario, localSec, durationSec) {
+  const r = localSec / durationSec;
+  const T = TRIP;
+
+  // 1. 出車: P で停止。区間の中間で P→D に入れる
+  if (r < T.departEnd) {
+    const half = T.departEnd / 2;
+    return {
+      speedKmh: 0, longAccG: 0, yawRateDeg: 0,
+      shift: r < half ? SHIFT_P : SHIFT_D,
+      pedal: { accelPedalPosition: 0, brakePressure: 126, brakeSwitch: 1 },
+    };
+  }
+
+  // 2. 発進: 0 -> 40 km/h
+  if (r < T.launchEnd) {
+    const span = (T.launchEnd - T.departEnd) * durationSec;
+    const t = localSec - T.departEnd * durationSec;
+    return {
+      speedKmh: TRIP_CRUISE_KMH * (t / span),
+      longAccG: TRIP_LAUNCH_ACC_G, yawRateDeg: 0, shift: SHIFT_D, pedal: null,
+    };
+  }
+
+  // 3. 走行: シナリオ固有。区間内のローカル秒で評価する
+  if (r < T.driveEnd) {
+    const span = (T.driveEnd - T.launchEnd) * durationSec;
+    const t = localSec - T.launchEnd * durationSec;
+    const base = evaluateScenario(scenario, t, span);
+    return { ...base, shift: SHIFT_D, pedal: null };
+  }
+
+  // 4. 減速: 40 -> 0 km/h。ここから評価窓に入る
+  if (r < T.slowEnd) {
+    const span = (T.slowEnd - T.driveEnd) * durationSec;
+    const t = localSec - T.driveEnd * durationSec;
+    const v = TRIP_CRUISE_KMH * (1 - t / span);
+    return {
+      speedKmh: Math.max(0, v),
+      longAccG: v > 0 ? TRIP_SLOW_ACC_G : 0,
+      yawRateDeg: 0, shift: SHIFT_D, pedal: null,
+    };
+  }
+
+  // 5. 停止保持（D のまま）
+  if (r < T.haltEnd) {
+    return {
+      speedKmh: 0, longAccG: 0, yawRateDeg: 0, shift: SHIFT_D,
+      pedal: { accelPedalPosition: 0, brakePressure: 126, brakeSwitch: 1 },
+    };
+  }
+
+  // 6-8. 後退: 加速 -> 定速 -> 減速。この区間の先頭が D→R、終端が R→P
+  if (r < T.reverseEnd) {
+    const span = (T.reverseEnd - T.haltEnd) * durationSec;
+    const t = localSec - T.haltEnd * durationSec;
+    const a = span * 0.3, b = span * 0.7;
+    if (t < a) {
+      return {
+        speedKmh: TRIP_REVERSE_KMH * (t / a),
+        longAccG: -TRIP_REVERSE_ACC_G,   // 後退の加速は負
+        yawRateDeg: 0, shift: SHIFT_R,
+        pedal: { accelPedalPosition: TRIP_REVERSE_PEDAL, brakePressure: 0, brakeSwitch: 0 },
+      };
+    }
+    if (t < b) {
+      return {
+        speedKmh: TRIP_REVERSE_KMH, longAccG: 0, yawRateDeg: 0, shift: SHIFT_R,
+        pedal: { accelPedalPosition: TRIP_REVERSE_PEDAL, brakePressure: 0, brakeSwitch: 0 },
+      };
+    }
+    return {
+      speedKmh: TRIP_REVERSE_KMH * (1 - (t - b) / (span - b)),
+      longAccG: TRIP_REVERSE_ACC_G,      // 後退の減速は正
+      yawRateDeg: 0, shift: SHIFT_R,
+      pedal: { accelPedalPosition: 0, brakePressure: TRIP_REVERSE_BRAKE, brakeSwitch: 1 },
+    };
+  }
+
+  // 9. 駐車完了: P で停止保持
+  return {
+    speedKmh: 0, longAccG: 0, yawRateDeg: 0, shift: SHIFT_P,
+    pedal: { accelPedalPosition: 0, brakePressure: 126, brakeSwitch: 1 },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // レコード生成
 // ---------------------------------------------------------------------------
@@ -281,7 +414,12 @@ function buildSensorLog({ scenario, sensorMode, durationSec, baseMs }) {
 
   for (let i = 0; i < totalTicks; i++) {
     const localSec = (i * TICK_MS) / 1000;
-    const { speedKmh, longAccG, yawRateDeg } = evaluateScenario(scenario, localSec, durationSec);
+    // canConnected はトリップ構成（出車→走行→駐車）でラップする (#32)。
+    // smartphoneOnly は canData を持たず shiftIndication を表現できないため従来どおり。
+    const step = (sensorMode === 'canConnected')
+      ? evaluateTrip(scenario, localSec, durationSec)
+      : { ...evaluateScenario(scenario, localSec, durationSec), shift: CAN_SHIFT_INDICATION, pedal: null };
+    const { speedKmh, longAccG, yawRateDeg } = step;
 
     const speedMs = kmhToMs(speedKmh);
     // 横 G は旋回半径ではなくヨーレートから導く: latAcc = v * yawRate[rad/s] / g
@@ -335,7 +473,9 @@ function buildSensorLog({ scenario, sensorMode, durationSec, baseMs }) {
     };
 
     if (sensorMode === 'canConnected') {
-      const pedal = pedalState(longAccG);
+      // pedal が指定されている区間は 3 状態規則を使わず直接採用する (#32)。
+      // 後退区間は longAcc の符号の意味が前進と逆のため規則が当てはまらない。
+      const pedal = step.pedal !== null ? step.pedal : pedalState(longAccG);
       sensor.canData = {
         vehicleSpeed: quantize(speedKmh, 1, 0, 255),
         longAcc: quantize(longAccG, 0.01, -1.28, 1.27),
@@ -346,7 +486,7 @@ function buildSensorLog({ scenario, sensorMode, durationSec, baseMs }) {
         accelPedalPosition: quantize(pedal.accelPedalPosition, 1, 0, 100),
         brakePressure: quantize(pedal.brakePressure, 1, 0, 126),
         brakeSwitch: pedal.brakeSwitch,
-        shiftIndication: CAN_SHIFT_INDICATION,
+        shiftIndication: step.shift,
         turnSignal: CAN_TURN_SIGNAL,
         repeat: 0,
       };

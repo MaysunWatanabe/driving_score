@@ -34,6 +34,8 @@
                          GPS は全モード必須
   proposal #30 (synced)  ゲート対象外センサーを構造化ゼロ値で埋める /
                          acceleration.interval は 10（0 にすると診断が成立しない）
+  proposal #32 (synced)  canConnected の 5 シナリオを「出車 → 走行 → 駐車」の
+                         1 トリップ構成へ変更 / 正準シナリオでの --loop は非推奨
   proposal #20 (synced)  Phase 1 = completed（実装 A のみで判定）/
                          Phase 2 は異常系に限定 /
                          スコア・診断 E2E は OQ 解消後の別フェーズ /
@@ -155,11 +157,13 @@ B に切り替えてよいのは、A が使えない次の場合だけ:
   python3 tools/ble-can-emulator.py \
       --source mock/sensor-log.cruise.canConnected.txt.gz
 
-  # 別シナリオを繰り返し送出（急ブレーキ）
-  # ※ Phase 2 は異常系に限定されており（proposal #20）、シナリオ差し替えは
-  #   Phase 2 の内容ではない。スコア反応の確認は OQ 解消後の別フェーズ。
+  # 実時間 60 秒で 1 トリップ（出車 → 走行 → 駐車）を流し切る。
+  # 駐車行動 D→R→P を含むためスコアが算出される（proposal #32）。
+
+  # 別シナリオを送出（急ブレーキ）
+  # ※ 正準シナリオは 1 トリップで完結するため --loop を付けない（proposal #32）
   python3 tools/ble-can-emulator.py \
-      --source mock/sensor-log.hard_brake.canConnected.txt.gz --loop
+      --source mock/sensor-log.hard_brake.canConnected.txt.gz
 
   # 送信周期を変える（既定 100ms）
   python3 tools/ble-can-emulator.py \
@@ -180,6 +184,11 @@ B に切り替えてよいのは、A が使えない次の場合だけ:
   --loop            入力の末尾に達したら先頭へ戻って送出を続ける。
                     指定しない場合、集約後の 600 フレーム（既定 100ms なら 60 秒）で
                     送出を終えて待機状態になる。
+
+                    ★ 正準シナリオでは使わないこと（proposal #32）。
+                      各シナリオは P で始まり P で終わる 1 トリップとして完結する。
+                      途中から繰り返すと P→D→…→P の整合が崩れ、駐車行動の
+                      検知がおかしくなる。1 周 60 秒で終わるので --loop は不要。
 
   --raw             集約せず 1 レコード = 1 notify で送出する（proposal #25）。
                     モックは 10ms 刻みなので再生が 1/10 速度になり、
@@ -520,10 +529,10 @@ BlueZ / D-Bus に接続できない、hci0 が見つからない
   - 「端末センサーのみ」「併用」では加速度・方位・磁力も必要。方位
     (deviceorientationabsolute) は静置だと発火しないため、診断開始直後に
     端末を傾ける必要がある。「車載BLEのみ」なら不要。
-  - スコアが 100 のまま動かないのは別の話。score1 は shiftIndication が
-    D(4)→R(2) に変わる駐車行動でのみ算出され、score2 は走行軌跡の
-    エントロピーから算出される。モックの 5 シナリオはどちらも作っていないため
-    初期値 100 のままになる。ヒヤリはスコアを変えない設計
+  - スコアが 100 のまま動かない場合、モックが古い可能性がある。
+    proposal #32 以降の正準シナリオは駐車行動 D→R→P を含むため score1 /
+    歩行機能 / 認知機能が算出される。node tools/gen-mock-sensorlog.mjs --canonical
+    で再生成すること。ヒヤリはスコアを変えない設計
     （scoreLogicFunction.txt の該当箇所にコメントあり）。
 
 
