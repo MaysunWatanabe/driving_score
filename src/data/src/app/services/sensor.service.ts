@@ -391,7 +391,7 @@ export class SensorService {
         turnSignal: turnSignal,
         repeat: -1
       };
-      //self.logService.debug('[DrivingScore][SensorService]', self.lastCanData);
+      self.logService.debug('[DrivingScore][SensorService]', self.lastCanData);
     });
   }
 
@@ -412,14 +412,63 @@ export class SensorService {
         // デモ／実センサーの切替閾値は 0。センサログが 1 レコードでも積まれていれば
         // デモ再生、0 件なら実センサーを使う (proposal #10)
         if (DemoData.instance().getSensorLogDataSize() <= 0) {
-          if (self.lastGeolocation === null
-            || self.lastAcceleration === null
-            || self.lastGyroscope === null
-            || self.lastMagnetometer === null) {
+          // 起動時ゲートは selectedSensorMode 別 (proposal #28)
+          //   canDataOnly    : GPS + canData
+          //   smartphoneOnly : GPS + 加速度計 + 方位 + 磁力計
+          //   combination    : 両方
+          // GPS は全モード必須。地図表示・ヒヤリ地点の座標・車両マーカーの向き
+          // (geolocation.heading) に要るため。
+          const mode = self.loginService.settings.selectedSensorMode;
+          const needPhoneSensors = (mode === 'smartphoneOnly' || mode === 'combination');
+          const needCanData      = (mode === 'canDataOnly'    || mode === 'combination');
+
+          if (self.lastGeolocation === null) {
+            return;
+          }
+          if (needPhoneSensors
+            && (self.lastAcceleration === null
+              || self.lastGyroscope === null
+              || self.lastMagnetometer === null)) {
+            return;
+          }
+          if (needCanData && self.lastCanData === null) {
             return;
           }
 
-          const canData = self.lastCanData !== null ? self.lastCanData : {repeat: -1};
+          // ゲート対象外のセンサーが未取得なら構造を保ったゼロ値で埋める (proposal #30)
+          // キーを欠落させたり null を入れたりしない。レコード形式が
+          // middleware.log.service の実機書出形式と共通で、DemoData の必須キー判定と
+          // モックの正準形 (proposal #10) がこの形式に依存しているため。
+          // ★ ゲートの後で行うこと。前に置くと必須センサーの null を隠してしまう。
+          if (!needPhoneSensors) {
+            if (self.lastAcceleration === null) {
+              // interval を 0 にしてはならない。SensorManager が
+              // calibrationTotalTime に積算しており、0 だとキャリブレーションが
+              // 永久に完了せず ScoreLogic へ 1 件も積まれなくなる。
+              self.lastAcceleration = {
+                accelerationIncludingGravity: { x: 0, y: 0, z: 0 },
+                rotationRate: { beta: 0, gamma: 0, alpha: 0 },
+                interval: 10,
+                repeat: -1
+              };
+            }
+            if (self.lastGyroscope === null) {
+              self.lastGyroscope = { beta: 0, gamma: 0, alpha: 0, repeat: -1 };
+            }
+            if (self.lastMagnetometer === null) {
+              self.lastMagnetometer = { x: 0, y: 0, z: 0, repeat: -1 };
+            }
+          }
+          if (!needCanData && self.lastCanData === null) {
+            self.lastCanData = {
+              vehicleSpeed: 0, longAcc: 0, latAcc: 0,
+              frontDistance: 0, lateralDistance: 0, steeringAngle: 0,
+              accelPedalPosition: 0, brakePressure: 0, brakeSwitch: 0,
+              shiftIndication: 0, turnSignal: 0, repeat: -1
+            };
+          }
+
+          const canData = self.lastCanData;
 
           self.lastGeolocation.repeat++;
           self.lastAcceleration.repeat++;
