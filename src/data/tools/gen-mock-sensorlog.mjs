@@ -129,7 +129,51 @@ const HB_LOW_SPEED_KMH = 10;
 /** mixed の区間順 (#12) */
 const MIXED_SEGMENTS = ['cruise', 'accel_decel', 'hard_brake', 'sharp_curve'];
 
-const SCENARIOS = ['cruise', 'accel_decel', 'hard_brake', 'sharp_curve', 'mixed'];
+/**
+ * score2（ハンドル操作の安定性）検証用シナリオの定数 (proposal #62)。
+ *
+ * middleware.score.logicCan の midHighSpeedDrive は
+ *   40 <= vehicleSpeed && turnSignal === 0 && |steeringAngle| <= 15
+ * を 10 秒継続したときだけ評価する。3 本とも速度は cruise と同一 (40km/h 定速) にし、
+ * 舵角だけを差し替えて区間 3 の 37.2 秒を丸ごとゲート内に収める。
+ */
+/** steer_stable: 階段の周期 [s] と巡回する舵角 [deg] */
+const STEER_STABLE_STEP_SEC = 4.0;
+const STEER_STABLE_ANGLES_DEG = [0, 8, -8];
+/** steer_wobble_*: ふらつき振幅 [deg] と duty の周期 [s] */
+const STEER_WOBBLE_AMPLITUDE_DEG = 2.0;
+const STEER_WOBBLE_DUTY_PERIOD_SEC = 4.0;
+/** steer_wobble_*: ふらつく時間比率 */
+const STEER_WOBBLE_DUTY_WEAK = 0.25;
+const STEER_WOBBLE_DUTY_STRONG = 1.0;
+
+/**
+ * ふらつきの決定的擬似乱数 (proposal #62)。Math.random は使わない。
+ * シナリオごとに resetWobbleRandom() で seed を戻すため、再生成しても同一バイト列になる。
+ */
+const WOBBLE_SEED0 = 12345;
+const WOBBLE_LCG_A = 1103515245;
+const WOBBLE_LCG_C = 12345;
+const WOBBLE_LCG_M = 0x7fffffff;
+
+let wobbleSeed = WOBBLE_SEED0;
+/** 直前のふらつき角。duty の外では新しい角を引かずこの値を保持する */
+let wobbleHoldDeg = 0;
+
+function resetWobbleRandom() {
+  wobbleSeed = WOBBLE_SEED0;
+  wobbleHoldDeg = 0;
+}
+
+function nextWobbleUnit() {
+  wobbleSeed = (wobbleSeed * WOBBLE_LCG_A + WOBBLE_LCG_C) & WOBBLE_LCG_M;
+  return wobbleSeed / WOBBLE_LCG_M;
+}
+
+const SCENARIOS = [
+  'cruise', 'accel_decel', 'hard_brake', 'sharp_curve', 'mixed',
+  'steer_stable', 'steer_wobble_weak', 'steer_wobble_strong',
+];
 const SENSOR_MODES = ['smartphoneOnly', 'canConnected'];
 
 /** リポジトリに commit する正準セット (#12) */
@@ -140,6 +184,10 @@ const CANONICAL_SET = [
   { scenario: 'hard_brake', sensorMode: 'canConnected' },
   { scenario: 'sharp_curve', sensorMode: 'canConnected' },
   { scenario: 'mixed', sensorMode: 'canConnected' },
+  // score2 検証用 (proposal #62)。steeringAngle は canData のため canConnected のみ
+  { scenario: 'steer_stable', sensorMode: 'canConnected' },
+  { scenario: 'steer_wobble_weak', sensorMode: 'canConnected' },
+  { scenario: 'steer_wobble_strong', sensorMode: 'canConnected' },
 ];
 
 const DEFAULT_DURATION_SEC = 60;
@@ -262,6 +310,49 @@ function scenarioSharpCurve(localSec) {
   };
 }
 
+/**
+ * 舵角 [deg] を yawRate [deg/s] に逆算する (proposal #62)。
+ *
+ * buildSensorLog は steeringDeg を yawRateDeg から一次で導く
+ *   steeringDeg = CURVE_PEAK_STEERING_DEG * yawRateDeg / CURVE_YAW_AMPLITUDE_DEG
+ * ため、狙った舵角をそのまま出すには逆変換して yawRateDeg を返す。
+ * latAcc も yawRate から導かれるので、舵角と横 G の整合が保たれる。
+ */
+function steerDegToYawRateDeg(steerDeg) {
+  return (steerDeg * CURVE_YAW_AMPLITUDE_DEG) / CURVE_PEAK_STEERING_DEG;
+}
+
+/**
+ * steer_stable: 40km/h 定速のまま、STEER_STABLE_STEP_SEC ごとに
+ * STEER_STABLE_ANGLES_DEG を巡回する階段状の操舵 (proposal #62)。
+ * 段の間は角度を保持するため二次テイラー予測が当たり、エントロピーは低くなる。
+ */
+function scenarioSteerStable(localSec) {
+  const index = Math.floor(localSec / STEER_STABLE_STEP_SEC) % STEER_STABLE_ANGLES_DEG.length;
+  return {
+    speedKmh: CRUISE_SPEED_KMH,
+    longAccG: 0,
+    yawRateDeg: steerDegToYawRateDeg(STEER_STABLE_ANGLES_DEG[index]),
+  };
+}
+
+/**
+ * steer_wobble_*: 40km/h 定速のまま ±STEER_WOBBLE_AMPLITUDE_DEG の
+ * 不規則なふらつきを duty の割合だけ入れる (proposal #62)。
+ * duty の外では直前の角度を保持する。
+ */
+function scenarioSteerWobble(localSec, duty) {
+  const phase = (localSec % STEER_WOBBLE_DUTY_PERIOD_SEC) / STEER_WOBBLE_DUTY_PERIOD_SEC;
+  if (phase < duty) {
+    wobbleHoldDeg = (nextWobbleUnit() * 2 - 1) * STEER_WOBBLE_AMPLITUDE_DEG;
+  }
+  return {
+    speedKmh: CRUISE_SPEED_KMH,
+    longAccG: 0,
+    yawRateDeg: steerDegToYawRateDeg(wobbleHoldDeg),
+  };
+}
+
 /** 4 区間を等分連結 (#12) */
 function scenarioMixed(localSec, scopeSec) {
   const segSec = scopeSec / MIXED_SEGMENTS.length;
@@ -276,6 +367,9 @@ function evaluateScenario(scenario, localSec, scopeSec) {
     case 'hard_brake': return scenarioHardBrake(localSec, scopeSec);
     case 'sharp_curve': return scenarioSharpCurve(localSec);
     case 'mixed': return scenarioMixed(localSec, scopeSec);
+    case 'steer_stable': return scenarioSteerStable(localSec);
+    case 'steer_wobble_weak': return scenarioSteerWobble(localSec, STEER_WOBBLE_DUTY_WEAK);
+    case 'steer_wobble_strong': return scenarioSteerWobble(localSec, STEER_WOBBLE_DUTY_STRONG);
     default: throw new Error(`unknown scenario: ${scenario}`);
   }
 }
@@ -402,6 +496,10 @@ function pedalState(longAccG) {
  * @returns {{lines: string[], stats: object}}
  */
 function buildSensorLog({ scenario, sensorMode, durationSec, baseMs }) {
+  // ふらつきの擬似乱数はファイル生成ごとに初期化する (proposal #62)。
+  // これをしないと 1 プロセスで複数シナリオを生成したとき結果が変わる。
+  resetWobbleRandom();
+
   const totalTicks = Math.round((durationSec * 1000) / TICK_MS);
   const dtSec = TICK_MS / 1000;
 
@@ -624,7 +722,7 @@ function usage() {
   --duration <sec>        既定 ${DEFAULT_DURATION_SEC}（行数 = duration x 100）
   --out <dir>             既定 src/data/mock
   --base-time <ISO8601>   既定 ${DEFAULT_BASE_TIME}
-  --canonical             commit 対象の正準 6 ファイルを一括生成
+  --canonical             commit 対象の正準 9 ファイルを一括生成
 `);
 }
 
