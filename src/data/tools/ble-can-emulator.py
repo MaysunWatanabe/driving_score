@@ -65,6 +65,11 @@ DEFAULT_RATE_MS = 100
 MIN_RATE_MS = 10
 MAX_RATE_MS = 1000
 
+#: 送信フレームを stdout に出す間隔 [件]（proposal #60 §2 / 裁定 instruction）。
+#: 既定は 100 件ごと、--verbose 指定時は 10 件ごと（rate-ms=100 で毎秒 4 行）。
+SEND_LOG_INTERVAL = 100
+VERBOSE_SEND_LOG_INTERVAL = 10
+
 # BlueZ D-Bus の定型名
 BLUEZ_SERVICE = 'org.bluez'
 DBUS_OM_IFACE = 'org.freedesktop.DBus.ObjectManager'
@@ -144,6 +149,76 @@ def encode_can_data(can):
     payload[10] = u8(can.get('shiftIndication', 0))
     payload[11] = u8(can.get('turnSignal', 0))
     return bytes(payload)
+
+
+# ---------------------------------------------------------------------------
+# 送信フレームの可読表示（proposal #60）
+# ---------------------------------------------------------------------------
+
+# 列挙値のラベル（proposal #60 §5 — 設計書 docs/運転診断アプリ_詳細設計書_20250228.xlsx 由来）。
+# 定義に無い値は "(?)" を表示するだけで、エラーにも警告にもせず送出は継続する
+# （エミュレータは入力を忠実に送る役割であり、値域検査は行わない。fact #55 の
+#  --inject-invalid で不正値を意図的に送る用途と両立させるため）。
+BRAKE_SWITCH_LABELS = {0: 'OFF', 1: 'ON'}
+SHIFT_LABELS = {1: 'P', 2: 'R', 3: 'N', 4: 'D', 6: 'L', 7: 'B'}
+TURN_SIGNAL_LABELS = {0: 'OFF', 1: 'L', 2: 'R', 3: 'HAZ'}
+
+
+def _enum_label(raw, labels):
+    """列挙値を "生値(ラベル)" 形式にする。未定義値は "生値(?)"（proposal #60 §5）"""
+    return '%d(%s)' % (raw, labels.get(raw, '?'))
+
+
+def decode_can_frame(payload):
+    """
+    12 バイトを物理量へ復号する（encode_can_data の逆変換 / infra.ble.device）。
+
+    表示は符号化前の canData ではなく **実際に送出するバイト列** を復号して出す
+    （proposal #60 §1）。クランプ・量子化の結果がそのまま見えるようにするため。
+    """
+    steering_raw = (payload[5] << 8) | payload[6]
+    return {
+        'vehicleSpeed': payload[0],
+        'longAcc': payload[1] * 0.01 - 1.28,
+        'latAcc': payload[2] * 0.01 - 1.28,
+        'frontDistance': payload[3] * 0.5,
+        'lateralDistance': payload[4] * 0.5 - 64,
+        'steeringAngle': steering_raw * 0.1 - 1080,
+        'accelPedalPosition': payload[7],
+        'brakePressure': payload[8],
+        'brakeSwitch': payload[9],
+        'shiftIndication': payload[10],
+        'turnSignal': payload[11],
+    }
+
+
+def format_send_lines(sent_count, payload):
+    """
+    1 フレーム分の出力 4 行を返す（proposal #60 §1）。
+
+    1 行目は現行書式のまま（既存証跡・回帰との突き合わせを壊さないため）。
+    2〜4 行目は先頭 3 スペースインデント、区切り " | " のデコード行。
+    単位は infra.ble.device.candata.units（proposal #60 §4）。
+    """
+    head = '[send] #%06d %s' % (sent_count, payload.hex(' '))
+    if len(payload) != PAYLOAD_LEN:
+        # --inject-invalid（fact #55）で長さ違反を送る場合はデコードできない。
+        # 送出そのものは継続させ、hex 行だけを出す。
+        return [head, '   (%d バイトのためデコードしません)' % len(payload)]
+
+    d = decode_can_frame(payload)
+    return [
+        head,
+        '   speed %4d km/h | longAcc %+.2f G | latAcc %+.2f G'
+        % (d['vehicleSpeed'], d['longAcc'], d['latAcc']),
+        '   front %5.1f m   | lateral %+.1f m | steer %+.1f deg'
+        % (d['frontDistance'], d['lateralDistance'], d['steeringAngle']),
+        '   accel %4d %%    | brake %4d bar | bSw %s shift %s turn %s'
+        % (d['accelPedalPosition'], d['brakePressure'],
+           _enum_label(d['brakeSwitch'], BRAKE_SWITCH_LABELS),
+           _enum_label(d['shiftIndication'], SHIFT_LABELS),
+           _enum_label(d['turnSignal'], TURN_SIGNAL_LABELS)),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -389,10 +464,15 @@ class CanCharacteristic(dbus.service.Object):
         self.value = dbus.Array([dbus.Byte(b) for b in payload], signature='y')
         self.PropertiesChanged(GATT_CHRC_IFACE, {'Value': self.value}, [])
 
-        if self.verbose:
-            print('[send] #%06d %s' % (self.sent_count, payload.hex(' ')))
-        elif self.sent_count == 1 or self.sent_count % 100 == 0:
-            print('[send] #%06d %s' % (self.sent_count, payload.hex(' ')))
+        # 出力頻度（proposal #60 §2 + 裁定 implementation_instruction）。
+        #   既定       : 1 件目と 100 件ごと
+        #   --verbose  : 10 件ごと（1 件目は出す）
+        # --verbose を毎フレームにすると rate-ms=100 で毎秒 40 行になり読めないため、
+        # 裁定で「秒間 40 → 4（10 回に 1 回）」へ落とすよう指示された。
+        interval = VERBOSE_SEND_LOG_INTERVAL if self.verbose else SEND_LOG_INTERVAL
+        if self.sent_count == 1 or self.sent_count % interval == 0:
+            for line in format_send_lines(self.sent_count, payload):
+                print(line)
 
         return True
 
@@ -510,7 +590,8 @@ def parse_args(argv):
     )
     parser.add_argument(
         '--verbose', action='store_true',
-        help='送出した 12 バイトを毎回表示する（既定は 100 件ごと）',
+        help='送出フレームの表示を %d 件ごとに増やす（既定は %d 件ごと / proposal #60）'
+             % (VERBOSE_SEND_LOG_INTERVAL, SEND_LOG_INTERVAL),
     )
     return parser.parse_args(argv)
 
