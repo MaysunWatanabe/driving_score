@@ -21,11 +21,22 @@ export class BLEDevice {
   private static BLE_DEVICE_ID: string = 'D8:3A:DD:6A:A2:15';
   private static BLE_DEVICE_NAME: string = 'DrivingCanData';
 
+  //: 1 回のスキャンで広告を集める時間 [ms]（proposal #77 提案 2 / 据え置き）
+  private static SCAN_WINDOW_MS: number = 3000;
+  //: 0 件だったときに再スキャンするまでの間隔 [ms]（proposal #77 提案 4）
+  private static SCAN_RETRY_INTERVAL_MS: number = 2000;
+  //: 初回を含むスキャンの最大試行回数（proposal #77 提案 4）。
+  //  Android は同一アプリで 30 秒に 5 回を超えるとスキャン結果を返さなくなるため、
+  //  3 回（最大 3*3000 + 2*2000 = 13,000ms）に留めて制限に余裕を残す。
+  private static SCAN_MAX_ATTEMPTS: number = 3;
+
   private bluetoothFunc: any = null;
   private scanDeviceIds: Array<string> = Array<string>();
   private connectDevices: Array<BLEDeviceInfo> = Array<BLEDeviceInfo>();
 
   private timer: any = null;
+  private retryTimer: any = null;
+  private scanAttempt: number = 0;
 
   constructor(
     private logService: LogService,
@@ -66,6 +77,11 @@ export class BLEDevice {
       if (this.timer !== null) {
         clearInterval(this.timer);
         this.timer = null;
+      }
+      // リトライ待機中に停止された場合も再スキャンさせない（proposal #77 提案 4）
+      if (this.retryTimer !== null) {
+        clearTimeout(this.retryTimer);
+        this.retryTimer = null;
       }
     } catch (error) {
       this.logService.error('[DrivingScore][BLEDevice]stop clearInterval failed', error);
@@ -131,7 +147,23 @@ export class BLEDevice {
    * BLEデバイスを探す
    */
   private async scanStart() {
-    this.logService.debug('[DrivingScore][BLEDevice]scanStart');
+    // 試行回数をリセットしてから 1 回目のスキャンに入る。
+    // 失敗ダイアログの「リトライ」もここを通るため、押すたびに 3 回サイクルが
+    // 最初からやり直しになる（proposal #77 提案 4）
+    this.scanAttempt = 0;
+    await this.scanOnce();
+  }
+
+  /**
+   * BLEデバイスを 1 回スキャンする
+   *
+   * 0 件だった場合は SCAN_RETRY_INTERVAL_MS 待って SCAN_MAX_ATTEMPTS まで
+   * 自分を呼び直す（proposal #77 提案 4）
+   */
+  private async scanOnce() {
+    this.scanAttempt++;
+    this.logService.debug('[DrivingScore][BLEDevice]scanStart attempt='
+      + this.scanAttempt + '/' + BLEDevice.SCAN_MAX_ATTEMPTS);
     this.scanDeviceIds.splice(0);
     var self = this;
     await BleClient.requestLEScan({services: []},
@@ -146,10 +178,20 @@ export class BLEDevice {
           "uuids":[],
           "rawAdvertisement":{}}
         */
-        if (result.device !== undefined && result.device.name === BLEDevice.BLE_DEVICE_NAME) {
+        // device.name は Android が持つリモート名のキャッシュを返すため、
+        // キャッシュが空だと広告が届いていても一致しない。広告そのものに載る
+        // localName も見て、どちらかが完全一致すればマッチとする（proposal #77 提案 1）
+        const cachedName = result.device !== undefined ? result.device.name : undefined;
+        const advertisedName = result.localName;
+        if (result.device !== undefined
+          && (cachedName === BLEDevice.BLE_DEVICE_NAME
+            || advertisedName === BLEDevice.BLE_DEVICE_NAME)) {
           self.logService.debug('[DrivingScore][BLEDevice]requestLEScan', result);
-          // 複数のBLEデバイスがあるかもしれないので、一覧にためてから処理する
-          self.scanDeviceIds.push(result.device.deviceId);
+          // 複数のBLEデバイスがあるかもしれないので、一覧にためてから処理する。
+          // 同一機が複数回報告されても選択ダイアログに重複を並べない（proposal #77 提案 1）
+          if (self.scanDeviceIds.indexOf(result.device.deviceId) < 0) {
+            self.scanDeviceIds.push(result.device.deviceId);
+          }
         }
       }
     );
@@ -159,19 +201,34 @@ export class BLEDevice {
         await BleClient.stopLEScan();
 
         if (self.scanDeviceIds.length == 0) {
-          await self.showConnectFailedDialog();
+          if (self.scanAttempt < BLEDevice.SCAN_MAX_ATTEMPTS) {
+            // まだ試行が残っていれば間隔を空けて再スキャンし、失敗ダイアログは出さない
+            self.retryTimer = setTimeout(async () => {
+              self.retryTimer = null;
+              // 待機中に診断が停止されたらそこで打ち切る（proposal #77 提案 4）
+              if (self.bluetoothFunc === null) {
+                self.logService.debug('[DrivingScore][BLEDevice]scanRetry: canceled');
+                return;
+              }
+              await self.scanOnce();
+            }, BLEDevice.SCAN_RETRY_INTERVAL_MS);
 
-        } if (self.scanDeviceIds.length == 1) {
+          } else {
+            // 上限まで 0 件だったときだけ失敗を提示する
+            await self.showConnectFailedDialog();
+          }
+
+        } else if (self.scanDeviceIds.length == 1) {
           // デバイスがひとつなら接続
           await self.connect(self.scanDeviceIds[0]);
 
-        } else if (self.scanDeviceIds.length > 1) {
+        } else {
           // デバイスが複数なら選択ダイアログを表示
           await self.showConnectDialog();
         }
 
       }
-    }, 3000);
+    }, BLEDevice.SCAN_WINDOW_MS);
   }
 
   /**
