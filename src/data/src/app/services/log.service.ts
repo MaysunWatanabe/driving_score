@@ -60,6 +60,11 @@ export class LogService {
 
     var dirPath = this.file.externalRootDirectory;
 
+    // checkDir はディレクトリが無いとき false を返さず NOT_FOUND_ERR で reject する
+    // （@awesome-cordova-plugins/file の checkDir は resolveDirectoryUrl の結果を
+    //   そのまま返すため）。`status === false` を待つ書き方だと初回は catch に飛び、
+    // createDir が一度も呼ばれずディレクトリが永久に作られなかった (proposal #80)。
+    // createDir は replace=true なら既存でも成功するので、直接呼ぶ。
     var dirName = 'Documents';
     try {
       await this.file.createDir(dirPath, dirName, true);
@@ -71,10 +76,7 @@ export class LogService {
 
     dirName = 'driving-score';
     try {
-      const status = await this.file.checkDir(dirPath, dirName);
-      if (status === false) {
-        await this.file.createDir(dirPath, dirName, true);
-      }
+      await this.file.createDir(dirPath, dirName, true);
       dirPath += dirName + '/';
     } catch (error: any) {
       this.error('[DrivingScore][Log] createDir failed. ' + dirPath + dirName, error);
@@ -83,10 +85,7 @@ export class LogService {
 
     dirName = 'debug-log';
     try {
-      const status = await this.file.checkDir(dirPath, dirName);
-      if (status === false) {
-        await this.file.createDir(dirPath, dirName, true);
-      }
+      await this.file.createDir(dirPath, dirName, true);
       dirPath += dirName + '/';
     } catch (error: any) {
       this.error('[DrivingScore][Log] createDir failed. ' + dirPath + dirName, error);
