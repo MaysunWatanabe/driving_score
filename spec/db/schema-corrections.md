@@ -1,44 +1,38 @@
-<!-- 作成: 2026-08-07 17:32:24 JST -->
+<!-- 作成: 2026-08-07 17:32:24 JST | 更新: 2026-08-24 14:11:38 JST -->
 
 ```json
 {
   "required_changes": [
-    {
-      "node": "db.schema.corrections",
-      "entrypoint": "spec/db/schema-corrections.md",
-      "description": "approved facts に整合するよう §5 CREATE TABLE REAL 是正（users.height / スコア系）とシード方針の最小限スコープで schema-corrections 仕様 MD を生成・更新する"
-    }
+    {"node": "db.schema.corrections", "entrypoint": "spec/db/schema-corrections.md", "description": "approved design_decision を確定方針として統合し、他ノード確定事項が本是正の DDL/シードスコープを拡張しないことを明記する（§5 REAL 是正とシード非拡張の本文は維持）"}
   ],
   "suggested_impacts": [
-    {
-      "domain": "Middleware-agent",
-      "severity": "could",
-      "reason": "デモ/実機切替の正準閾値は DemoData.getSensorLogDataSize()>0 であり DB シード追加は行わないため、Middleware 側実装・コメントとの一致確認のみ"
-    },
-    {
-      "domain": "QA-agent",
-      "severity": "should",
-      "reason": "REAL 是正後の型・制約と、User.dummy()／DemoData／手動 INSERT に依存するシード手順の検証観点が必要"
-    }
+    {"domain": "QA-agent", "severity": "should", "reason": "是正後 CREATE TABLE の REAL 型・User.dummy()/手動 INSERT の投入整合、および DemoData 経路の非回帰確認が必要"},
+    {"domain": "Middleware-agent", "severity": "could", "reason": "デモ/実機切替閾値とセンサログ投入は本是正の非対象であり、Middleware 実装との一致確認に留まる"}
   ],
-  "requirements_context": "db.schema.corrections はスキーマ是正を最小限に留める。実施対象は §5 で定められた CREATE TABLE の REAL 是正のみ（users.height、および score・score_history・capability_score のスコア系カラム）。シードは既存 User.dummy() と DemoData（センサログ）に依存し、必要なら一時的な手動 INSERT 手順で足りるものとする。settings へのシード UI、in-memory DbService、webm のコミットは追加しない。DB シード拡充・infra.assets.geolocation 復活は本ノードの対象外。モックセンサログの正準レコード・生成スクリプト・DemoData 件数閾値 0 は別 decision で確定済みだが、本ノードでは DB 永続スキーマ是正に触れない範囲として扱う。",
+  "requirements_context": "db.schema.corrections は永続化スキーマ（CREATE TABLE）の是正を最小限に限定する。必須実施は §5 の REAL 是正のみで、対象は users.height、および score / score_history / capability_score のスコア系カラムである。テーブル名・カラム名の変更は行わず型是正に留める。データ変換（スケール変更等）は §5 が要求しない限り行わず、型の適合を優先する。シードは既存 User.dummy() と DemoData（センサログ）に依存し、不足分は一時的な手動 INSERT 手順で補う。settings へのシード UI、in-memory DbService、webm コミット、DB シード拡充、infra.assets.geolocation 復活、モックセンサログ生成物の変更は実施しない。DemoData.getSensorLogDataSize()>0 によるデモ/実機切替、センサログの UI FileReader Base64 → pushSensorLogFile 投入、モード別センサーゲート、10ms/runScoreLogic、スコア区間集約・量子化、BLE --rate-ms 既定 100 は他ノードの確定事項であり、本ノードの永続スキーマ是正を拡張しない。UI 表示形式・API 形状・集計再計算方針・履歴保持期間など §5 外の意味論拡張は範囲外。",
   "fact_candidates": [
     {
       "type": "data_semantics",
       "title": "users.height は REAL として永続化する",
-      "statement": "users テーブルの height は CREATE TABLE 上 REAL 型として定義・是正される",
+      "statement": "users テーブルの height は、ユーザの身長として保存される値であり、CREATE TABLE 上 REAL 型として定義・是正する",
       "status": "candidate"
     },
     {
       "type": "data_semantics",
       "title": "スコア系カラムは REAL として永続化する",
-      "statement": "score・score_history・capability_score に関するスコア系カラムは CREATE TABLE 上 REAL 型として定義・是正される",
+      "statement": "score・score_history・capability_score に関するスコア系カラムは、スコアまたはスコア履歴として保存される数値であり、CREATE TABLE 上 REAL 型として定義・是正する",
       "status": "candidate"
     },
     {
       "type": "constraint",
       "title": "スキーマ是正スコープは §5 の REAL 是正に限定",
-      "statement": "db.schema.corrections で必須実施するスキーマ変更は §5 の CREATE TABLE REAL 是正（users.height および score・score_history・capability_score のスコア系）に限定する",
+      "statement": "db.schema.corrections で必須実施するスキーマ変更は、§5 の CREATE TABLE REAL 是正（users.height および score・score_history・capability_score のスコア系）に限定する",
+      "status": "candidate"
+    },
+    {
+      "type": "constraint",
+      "title": "是正は型のみで識別子は変えない",
+      "statement": "本是正では既存コードが依拠するテーブル名・カラム名を変更せず、型の是正に留める",
       "status": "candidate"
     },
     {
@@ -58,16 +52,22 @@
       "title": "DB シード拡充は本是正の対象外",
       "statement": "モックセンサログや DemoData 件数に関する決定があっても、DB シードの拡充・新規シード経路の追加は db.schema.corrections では実施しない",
       "status": "candidate"
+    },
+    {
+      "type": "constraint",
+      "title": "センサログ正準スキーマを DB テーブルへ持ち込まない",
+      "statement": "モックセンサログの正準レコード定義は本ノードの永続テーブル定義へ持ち込まず、DB シードとしても扱わない",
+      "status": "candidate"
     }
   ],
   "open_questions": [
-    "§5 本文に列挙される REAL 是正対象カラムの完全な一覧（score / score_history / capability_score 配下の具体的カラム名とテーブル名）が本入力に無い場合、既存 spec 他節または Canonical SpecGraph 上の §5 定義との突合が必要（DB）。決まらないと CREATE TABLE 是正の適用範囲が曖昧になる。",
-    "users.height およびスコア系 REAL 化に伴う既存格納値のマイグレーション要否（型変更のみか、データ変換が必要か）は実装・QA と要確認。決まらないと Migration 手順と互換性検証が確定しない。"
+    "§5 本文に列挙される REAL 是正対象カラムの完全一覧（score / score_history / capability_score 配下の具体的テーブル名とカラム名）が本入力に無い。未確定な理由は正準 §5 のカラム単位定義が本ノード資料に含まれていないため。DB ドメインで既存 CREATE TABLE / SpecGraph 上の §5 と突合する必要がある。決まらないと是正適用範囲と検証対象が曖昧になる。",
+    "users.height およびスコア系 REAL 化に伴う既存格納値のマイグレーション要否（型変更のみか、データ変換が必要か）は未確定。§5 は型是正を求めるが既存 DB ファイルの変換手順を定義していない。実装および QA の判断が必要。決まらないと Migration 手順と互換性検証が確定しない。"
   ],
   "rationale_notes": [
-    "設計方針は「最小限」：スキーマの型是正のみを仕様どおり行い、デモデータ供給・UI・資産コミットなど周辺の拡張は明示的に非対象とする。",
+    "設計方針は最小限：スキーマの型是正のみを仕様どおり行い、デモデータ供給・UI・資産コミットなど周辺の拡張は明示的に非対象とする。",
     "シードを User.dummy() と DemoData に寄せることで、settings シード UI や in-memory DbService といった代替経路の仕様肥大を避ける。",
-    "モックセンサログ生成・DemoData.getSensorLogDataSize()>0 閾値は approved design_decision だが永続スキーマ是正とは分離し、本 MD では非対象・依存関係の注記に留める。"
+    "他ノードの approved design_decision（10ms、DemoData 閾値 0、モード別ゲート、区間集約・量子化、BLE 既定 100）は実装追認または別責務であり、本 MD では境界注記に留め DDL へ展開しない。"
   ]
 }
 ```
@@ -79,6 +79,16 @@
 
 本仕様は、永続化スキーマ（CREATE TABLE）における型・定義の是正を **最小限** の範囲で確定する。  
 対象は §5 で定められた **REAL 是正** に限定し、シード経路・デモ資産・UI・代替 DbService の追加は行わない。
+
+### 1.1 確定済み方針（approved）
+
+本ノードの是正範囲は次の design_decision に従う。
+
+- §5 の CREATE TABLE REAL 是正のみ仕様どおり実施する（`users.height`、および `score` / `score_history` / `capability_score` のスコア系）
+- シードは既存 `User.dummy()` と DemoData（センサログ）に依存し、必要なら一時的な手動 INSERT 手順に頼る
+- settings へのシード UI、in-memory `DbService`、webm コミットは追加しない
+
+他ノードで確定した実装追認（10ms 周期、`runScoreLogic` 前提、DemoData 閾値 0、モード別センサーゲート、スコア区間集約・量子化、BLE `--rate-ms` 既定 100 等）は、**本ノードの永続スキーマ是正を拡張しない**。
 
 ## 2. スコープ
 
@@ -152,6 +162,7 @@
 - **DemoData 件数閾値**: デモ/実機切替の正準閾値は `DemoData.getSensorLogDataSize()>0`（`>0` デモ、`<=0` 実センサー）。これは Middleware / DemoData 側の契約であり、**DB スキーマ是正では変更しない**。
 - **センサログの投入経路**: 現行どおり UI 側 FileReader Base64 → `pushSensorLogFile` 等に任せ、DB シードとしては扱わない。
 - **モックセンサログ正準スキーマ**（JSON Lines、シナリオ、`canData` 省略規則、`repeat=0` 固定等）は別途確定済みの design decision に従う。本ノードはそれを DB テーブル定義へ持ち込まない。
+- **記録開始ゲート・周期・符号化**: モード別センサーゲート、10ms / `runScoreLogic`、起動後の前回値保持、区間集約・量子化は別ノードの確定事項であり、本是正のテーブル定義・シード方針を変更しない。
 
 ## 8. 制約サマリ
 
