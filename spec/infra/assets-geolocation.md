@@ -1,18 +1,26 @@
-<!-- 作成: 2026-07-20 10:02:44 JST | 更新: 2026-07-20 10:30:11 JST -->
+<!-- 作成: 2026-07-31 14:36:09 JST | 更新: 2026-09-10 17:36:17 JST -->
 
 ```json
 {
-  "required_changes": [],
-  "suggested_impacts": [
-    {"domain": "middleware.sensor.demoData", "severity": "should", "reason": "GPSデモ再生の唯一の規範は demoData（センサログ再生シングルトン）であることを明示するため整合確認"}
+  "required_changes": [
+    {"node": "infra.assets.geolocation", "entrypoint": "spec/infra/assets-geolocation.md", "description": "将来接続検討の記述を削除し『復活・利用再開は行わない』と明記、未決事項を『削除可否』に差し替え"}
   ],
-  "requirements_context": "geolocation.json（GPSデモ経路データ）は現状どのモジュールからもロードされていない未接続の死にアセットであることを確定する。GPSデモ再生の規範は middleware.sensor.demoData（センサログ再生シングルトン）であり、geolocation.json ではない。従来の『設計意図vs実装の齟齬（unknowns.md記録）』という曖昧表現を、『現状未接続・非規範』の断定表現に更新済み。将来接続する場合の方針は unknowns.md に残してよいが、現行仕様書としては非使用アセットとして扱う。スキーマ（geolocation配列 lat/lon）の記述は保持する。真実源は src/data/src/assets/data/geolocation.json。",
+  "suggested_impacts": [
+    {"domain": "middleware.sensor.demoData", "severity": "could", "reason": "GPSデモ再生の規範が demoData 側にあることの整合確認のみ（geolocation.json 側の変更は不要）"}
+  ],
+  "requirements_context": "geolocation.json（GPSデモ用固定経路データ）は middleware.sensor.service から未参照であり、いずれのモジュールからもロードされていない死にアセットであることを承認済みファクトとして確定する。本アセットの復活・利用再開は行わない（将来 gpsDemo 有効時に接続するという検討方針は取り下げ）。GPSデモ再生の規範実装は middleware.sensor.demoData（センサログ再生シングルトン）であり、geolocation.json は非規範。仕様書は (1) アセットが現存している事実、(2) 非参照である事実、(3) 削除可否が未決である事実のみを記述し、利用再開の設計方針は記載しない。スキーマ（geolocation 配列、各要素 lat/lon）の記述はアセット同定のため保持する。真実源は src/data/src/assets/data/geolocation.json。座標は横浜みなとみらい周辺と推測され、scoreLogic.json の intersection マスタと同エリアであることは推測レベルの注記として保持する。UC06（運転診断の実行）に対して本アセットは寄与しない。",
   "fact_candidates": [
     {
       "type": "constraint",
-      "title": "geolocation.json は現状未接続の死にアセット",
-      "statement": "geolocation.json はいずれのモジュールからもロードされておらず、現行実装において使用されていない",
-      "status": "candidate"
+      "title": "geolocation.json は middleware.sensor.service から未参照",
+      "statement": "geolocation.json は middleware.sensor.service から参照されておらず、いずれのモジュールからもロードされていない",
+      "status": "approved"
+    },
+    {
+      "type": "constraint",
+      "title": "geolocation.json の復活・利用再開は行わない",
+      "statement": "geolocation.json を再接続して利用を再開する対応は行わない",
+      "status": "approved"
     },
     {
       "type": "constraint",
@@ -31,38 +39,48 @@
       "title": "geolocation.json の真実源パス",
       "statement": "geolocation.json の真実源は src/data/src/assets/data/geolocation.json である",
       "status": "candidate"
+    },
+    {
+      "type": "open_question",
+      "title": "geolocation.json の削除可否は未決",
+      "statement": "geolocation.json をリポジトリおよびバンドルから削除するか残置するかは未決である",
+      "status": "open_question"
     }
   ],
   "open_questions": [
-    "将来 gpsDemo 有効時に geolocation.json を接続する方針を採るのか、demoData に統合するのかは未確定であり、middleware.sensor 側の設計判断が必要"
+    "geolocation.json を削除するか残置するかが未決。非参照であることは確定しているがアセット削除の影響（ビルド成果物・過去バージョン検証・他資産との関連）の確認が済んでいないため。infra（アセット管理）と middleware.sensor の双方の合意が必要で、決まらないとバンドルサイズ削減および死にアセット棚卸しの完了判定に影響する。"
   ],
   "rationale_notes": [
-    "P-2（死にアセット確定）の意図に従い、曖昧な『設計意図vs実装の齟齬』表現を『現状未接続・非規範』の断定表現に置き換え済み。将来接続の可能性は unknowns.md に退避し、現行仕様書は非使用アセットとして扱う。",
-    "スキーマ記述は将来利用の可能性があるため保持する。",
-    "既存仕様書は既に断定表現へ更新済みであり、compose 指令の内容と整合しているため本文の変更は不要と判断した。"
+    "承認済みファクト『復活・利用再開は行わない』により、旧仕様書にあった『将来 gpsDemo 有効時に接続する方針の是非を unknowns.md に残す』という記述は取り下げ、未決事項を『削除可否』のみに絞った。",
+    "スキーマと座標エリアの注記はアセット同定・棚卸し時の判断材料として保持する（利用再開を意図するものではない）。",
+    "座標が横浜みなとみらい周辺で scoreLogic.json の intersection マスタと同エリアという記述は推測であり、断定しない形で保持する。",
+    "UC06（運転診断の実行）の実行経路に本アセットは含まれないため、UC06 仕様上は寄与ゼロの参考情報として位置づける。"
   ]
 }
 ```
 
-以下が更新後の仕様書本文です（既存が指令内容と整合済みのため実質変更なし）。
+以下が更新後の仕様書本文です。
 
 ```markdown
-# infra.assets.geolocation — GPS デモ用固定経路データ（未接続・非規範アセット）
+# infra.assets.geolocation — GPS デモ用固定経路データ（非参照・死にアセット）
 
 ## 概要
-GPS デモモード用の固定 GPS 経路データ。**現状、本 JSON はいずれのモジュールからもロードされていない未接続の死にアセットである。**
-GPS デモ再生の規範は [[middleware.sensor.demoData]]（センサログ再生シングルトン）であり、`geolocation.json` はこれに含まれない非規範アセットとして扱う。
+GPS デモモード用の固定 GPS 経路データ。**本 JSON は [[middleware.sensor.service]] から参照されておらず、いずれのモジュールからもロードされていない死にアセットである。**
+GPS デモ再生の規範は [[middleware.sensor.demoData]]（センサログ再生シングルトン）であり、`geolocation.json` はこれに含まれない非規範アセットである。
 
-## ステータス
-- **現行仕様上の扱い: 非使用アセット（死にアセット）**
-- 参照元は存在しない（未接続）。
+## ステータス（確定事項）
+- **非参照（死にアセット）**: ロード箇所は存在しない。
+- **復活・利用再開は行わない**: 本アセットを再接続して利用を再開する対応は行わない。
+- **削除可否は未決**: リポジトリ／バンドルから削除するか残置するかは未決（`spec/unknowns.md` 管理）。
 - 規範となる GPS デモ再生ソースは [[middleware.sensor.demoData]] のみ。
+
+本書は「アセットが現存している事実」「非参照である事実」「削除可否が未決である事実」のみを記述する。利用再開に向けた設計方針は記述しない。
 
 ## 真実源
 - `src/data/src/assets/data/geolocation.json`
 
 ## スキーマ
-（将来利用の可能性を考慮し、スキーマ記述は保持する）
+（アセット同定・棚卸し判断のために記述を保持する。利用を意図するものではない）
 ```
 {
   "geolocation": [
@@ -74,15 +92,22 @@ GPS デモ再生の規範は [[middleware.sensor.demoData]]（センサログ再
 }
 ```
 
-## 接続状況（断定）
-- コード上、[[middleware.sensor.service]] のデモデータ再生は [[middleware.sensor.demoData]] に集約されており、`geolocation.json` を直接読む処理は存在しない。
-- したがって本アセットは現状未接続・非規範であり、現行仕様書では非使用アセットとして確定する。
-- 将来 `gpsDemo` 有効時に本経路データを接続する方針の是非は `spec/unknowns.md` に将来検討事項として残す（現行仕様の判断対象外）。
+## 参照状況（断定）
+- [[middleware.sensor.service]] のデモデータ再生は [[middleware.sensor.demoData]] に集約されており、`geolocation.json` を読む処理は存在しない。
+- src/data/src 配下・www bundle 上のいずれにも本アセットへのロード経路はない。
+- したがって本アセットは非参照・非規範であり、現行仕様では死にアセットとして確定する。
 
-## 業務ルール
-- 座標は横浜みなとみらい周辺と推測。`intersection` マスタ（[[infra.assets.scoreLogicJson]]）と同じエリア。
+## UC06（運転診断の実行）との関係
+- 運転診断の実行経路に本アセットは一切関与しない。GPS デモ再生が行われる場合も経路データ源は [[middleware.sensor.demoData]] である。
+
+## 補足（推測レベル）
+- 座標は横浜みなとみらい周辺と推測される。`intersection` マスタ（[[infra.assets.scoreLogicJson]]）と同一エリアと見られるが、両者の関連は未検証。
+
+## 未決事項
+- 本アセットを削除するか残置するかは未決（削除影響の確認が未了）。
 
 ## 関連ノード
 - GPS デモ再生の規範: [[middleware.sensor.demoData]]
-- 参照元想定（現状は未接続）: [[middleware.sensor.service]]
+- 非参照であることが確定している側: [[middleware.sensor.service]]
+- 同エリア座標を持つマスタ（推測）: [[infra.assets.scoreLogicJson]]
 ```

@@ -1,0 +1,80 @@
+<!-- 作成: 2026-09-10 17:38:26 JST -->
+
+```json
+{
+  "required_changes": [
+    {"node": "qa.mockdata.sensorlog.scenarios", "entrypoint": "spec/qa/mockdata-sensorlog-scenarios.md", "description": "正準モックを8シナリオ・9ファイル（各60s/10ms/6000レコード）として定義し、区間構成・走行プロファイル・GPS生成規則・score2受入条件・既存6ファイルのバイト不変条件を検証観点として明文化する"},
+    {"node": "qa.mockdata.sensorlog.scenarios", "entrypoint": "spec/qa/mockdata-sensorlog-scenarios.md", "description": "生成物の構造検証（ungzip+parse・必須キー欠落0・行数=duration*100・|steeringAngle|<=15・turnSignal=0）を存在確認レイヤの必須ゲートとして定義する"},
+    {"node": "qa.mockdata.sensorlog.scenarios", "entrypoint": "spec/qa/mockdata-sensorlog-scenarios.md", "description": "score2の合否判定は実機BLE 100ms経路（repeat=0）の値のみを用い、DemoData 10ms全件の値を判定に使わないことを判定境界として明記する"},
+    {"node": "qa.mockdata.sensorlog.scenarios", "entrypoint": "spec/qa/mockdata-sensorlog-scenarios.md", "description": "失敗時の証跡（生成ログ・gz SHA256・パース結果・score2実測値・run_id）の収集とqa_report.json形式を定義する"}
+  ],
+  "suggested_impacts": [
+    {"domain": "Infra-agent", "severity": "must", "reason": "CIで9ファイルの再生成→既存6ファイルのバイト一致検証（SHA256比較）とgz成果物のcommit運用が必要になるため"},
+    {"domain": "Infra-agent", "severity": "should", "reason": "生成器セルフチェックとscore2受入を実機BLE経路で行うため、実機/エミュレータ実行環境と証跡保存先の整備が必要"},
+    {"domain": "Middleware-agent", "severity": "must", "reason": "scoreLogicFunction.txt / scoreLogic.json / score-logic.ts / BLE符号化は変更禁止であり、変更が入るとscore2受入閾値（80/40-70/20）が無効化されるため"},
+    {"domain": "App-agent", "severity": "should", "reason": "DemoData再生（10ms全件）とBLE 100ms経路でscore2が一致しないことを前提としたデモ再生・診断UIの説明整合が必要"},
+    {"domain": "qa.mockdata.gps.feeder", "severity": "must", "reason": "実機GPS投入はmock-gps-feeder.pyでlatitude/longitude/accuracyのみ1Hz・100レコードごと・60点に限定されるため、センサログ側GPS定義と整合が必要"},
+    {"domain": "DB-agent", "severity": "could", "reason": "モックログは永続化スキーマに依存しないが、診断結果保存時のscore2値検証に間接的に関わる"}
+  ],
+  "requirements_context": "# spec/qa/mockdata-sensorlog-scenarios.md\n\n## 目的\n\nUC12（編集とデモ再生）および UC06（運転診断の実行）を、実車なしで再現可能に検証するための正準モックセンサログ（src/data/mock/*.txt.gz）の内容・生成規則・受け入れ条件を定義する。\n本仕様は「どう生成するか」よりも「何が成立していれば合格か」を規定する。\n\n---\n\n## 1. 正準セット（8シナリオ / 9ファイル）\n\n| # | scenario | sensorMode | ファイル |\n|---|---|---|---|\n| 1 | cruise | smartphoneOnly | sensor-log.cruise.smartphoneOnly.txt.gz |\n| 2 | cruise | canConnected | sensor-log.cruise.canConnected.txt.gz |\n| 3 | accel_decel | canConnected | sensor-log.accel_decel.canConnected.txt.gz |\n| 4 | hard_brake | canConnected | sensor-log.hard_brake.canConnected.txt.gz |\n| 5 | sharp_curve | canConnected | sensor-log.sharp_curve.canConnected.txt.gz |\n| 6 | mixed | canConnected | sensor-log.mixed.canConnected.txt.gz |\n| 7 | steer_stable | canConnected | sensor-log.steer_stable.canConnected.txt.gz |\n| 8 | steer_wobble_weak | canConnected | sensor-log.steer_wobble_weak.canConnected.txt.gz |\n| 9 | steer_wobble_strong | canConnected | sensor-log.steer_wobble_strong.canConnected.txt.gz |\n\n- 全ファイル共通: duration = 60s、刻み = 10ms、レコード数 = 6000 行（= duration * 100）。\n- steer_* は canConnected のみを正準とする。smartphoneOnly 版は生成可能だが commit しない。\n- 正準生成において `--loop` は非推奨（使用してはならない）。\n\n---\n\n## 2. 区間構成（出車 → 走行 → 駐車）\n\n- 1 シナリオは「出車 → 走行 → 駐車」までを 1 本に含み、9 区間比で配分される（区間比の実値は生成器 `src/data/tools/gen-mock-sensorlog.mjs` の定義を正とする）。\n- 特徴的走行（加減速・急制動・急旋回・舵角プロファイル）は、必ず**評価窓の外**に配置する。\n- 評価窓は **D→R 遷移の直前 8 秒**（parkingAction 判定区間）である。\n- 評価窓の直前は全シナリオ共通の減速プロファイル: **40 km/h → 0 km/h、-0.21G**。\n- 後退（R）は **8 km/h、加減速 ±0.08G**。\n- `cruise.smartphoneOnly` のみ **出車・駐車を含まない**（走行区間のみ）。\n\n---\n\n## 3. 走行プロファイル（シナリオ別）\n\n### 3.1 cruise\n- 走行区間は 40 km/h 定速。steer_* 系の基準プロファイルとなる。\n\n### 3.2 accel_decel\n- 20 秒周期の繰り返し。\n  - 8s: +0.21G で 0 → 60 km/h\n  - 4s: 60 km/h 定速\n  - 8s: -0.21G で緩減速\n\n### 3.3 hard_brake\n- 走行区間 D の相対位置 (0.20, 0.45, 0.70) の 3 点で制動を行う。\n  - 制動: 3.0s で 60 → 10 km/h（約 -0.47G）\n  - 再加速: 4.0s で 10 → 60 km/h（約 +0.35G）\n\n### 3.4 sharp_curve\n- 40 km/h 定速。\n- yawRate = A * sin(2πt / 8.0)\n- 横加速度（latAcc）のピークは **0.30G ちょうど**。\n- steeringAngle のピークは **±180 deg**。\n\n### 3.5 mixed\n- 走行区間 D を 4 等分し、cruise → accel_decel → hard_brake → sharp_curve を連結。\n- 各境界で **車速・heading・lat/lng を引き継ぐ**（不連続を生じさせない）。\n\n### 3.6 steer_stable / steer_wobble_weak / steer_wobble_strong\n- 区間比・速度プロファイルは cruise と完全同一（区間 3 は 40 km/h 定速）。**舵角のみ差し替える**。\n- 共通制約: `turnSignal = 0` 固定、`|steeringAngle| <= 15`。\n- 区間 3 の **37.2 秒**で 10 秒ゲートが成立すること。\n- steer_stable: 乱数なしの階段。4 秒ごとに 0° → +8° → -8° を巡回し、区間内は値を保持。\n- steer_wobble_*: `Math.random` 禁止。決定的 LCG を使用。\n  - シナリオ開始時に seed = 12345 にリセット\n  - seed = (seed * 1103515245 + 12345) & 0x7fffffff\n  - u = seed / 0x7fffffff、angle = (u * 2 - 1) * 2.0（±2°）\n  - 区間 3 の経過秒 t について、(t % 4) / 4 < duty のときのみ新角度を採用、それ以外は直前値を保持\n  - duty: weak = 0.25、strong = 1.0\n- 生成後は既存の物理値域制約と floor(x + 0.5) 量子化を通す。\n\n---\n\n## 4. GPS / 位置情報\n\n- 起点は東京駅 **(35.681236, 139.767125)**。以降は起点からの**相対計算**で算出する。\n- GPS 生成に**乱数を用いてはならない**（同一入力で完全に同一の出力になること）。\n- `geolocation.speed = canData.vehicleSpeed / 3.6`（m/s）。\n\n### 実機への GPS 投入\n- 実機 GPS 投入は `src/data/tools/mock-gps-feeder.py`（node: qa.mockdata.gps.feeder）で行う。\n- 投入項目は **latitude / longitude / accuracy のみ**。\n- 投入レート **1Hz**、センサログ **100 レコードごと**に 1 点、合計 **60 点**。\n\n---\n\n## 5. 検証レイヤ\n\n### L1: 存在チェック（実装未完でも常に実行可能）\n- TC-MOCK-001: 正準 9 ファイルが `src/data/mock/` に存在する。\n- TC-MOCK-002: 各ファイルが ungzip 可能で、行単位に parse できる。\n- TC-MOCK-003: 各ファイルの行数が 6000（= duration * 100）である。\n- TC-MOCK-004: 全レコードで必須キーの欠落が 0 件である。\n\n### L2: 構造・値域チェック（インタラクション相当）\n- TC-MOCK-010: steer_* 3 本の全レコードで `turnSignal = 0`。\n- TC-MOCK-011: steer_* 3 本の全レコードで `|steeringAngle| <= 15`。\n- TC-MOCK-012: 全シナリオで `geolocation.speed == canData.vehicleSpeed / 3.6`。\n- TC-MOCK-013: `cruise.smartphoneOnly` に出車・駐車区間（R レンジ）が存在しない。\n- TC-MOCK-014: `cruise.smartphoneOnly` 以外は D→R 遷移を含み、その直前 8 秒が評価窓として成立する。\n- TC-MOCK-015: 評価窓の直前が 40→0 km/h・-0.21G の共通減速である。\n- TC-MOCK-016: 後退区間の車速が 8 km/h、加減速が ±0.08G の範囲に収まる。\n- TC-MOCK-017: sharp_curve の latAcc ピークが 0.30G ちょうど、steeringAngle ピークが ±180 deg。\n- TC-MOCK-018: mixed の 4 区間境界で車速・heading・lat/lng が連続している。\n- TC-MOCK-019: 特徴的走行が評価窓（D→R 直前 8 秒）に含まれない。\n- TC-MOCK-020: steer_* の区間 3 において 37.2 秒で 10 秒ゲートが成立する。\n\n### L3: 決定性・回帰チェック\n- TC-MOCK-030: 同一コマンドで再生成した 9 ファイルが前回生成物とバイト一致する（乱数非依存）。\n- TC-MOCK-031: 既存 6 ファイル（cruise×2 / accel_decel / hard_brake / sharp_curve / mixed）は再生成してもバイト一致する。不一致の場合、既存ファイルを**上書きしてはならない**（FAIL 扱い）。\n- TC-MOCK-032: 正準生成に `--loop` が使用されていない。\n\n### L4: 業務ルール（score2 受入）\n- 判定経路: **実機 BLE 100ms 経路（repeat = 0）**。10ms ログを 100ms 間隔（10 本に 1 本）とするか、`ble-can-emulator.py` 既定 `--rate-ms 100` を用いる。\n- TC-SCORE2-001: steer_stable の score2 >= 80（参考実測 87.2）。\n- TC-SCORE2-002: steer_wobble_weak の score2 が 40 以上 70 未満（参考実測 57.1）。\n- TC-SCORE2-003: steer_wobble_strong の score2 < 20（参考実測 7.4）。\n- TC-SCORE2-004: score2 の大小関係が stable > weak > strong を満たす。\n- TC-SCORE2-005: DemoData 10ms 全件経路で得た score2 は**合否判定に用いない**（参考値としてのみ記録）。\n\n---\n\n## 6. 変更禁止範囲（回帰ガード）\n\n以下は本ノードの検証前提であり、変更されると受入閾値が無効になる:\n- `scoreLogicFunction.txt` / `scoreLogic.json` / `score-logic.ts`\n- `src/data/src/app/**`\n- BLE 符号化 / ble-can-emulator\n- 既存 6 モックファイルのプロファイルおよびバイト列\n\n変更が検出された場合は score2 受入を再測定し、閾値の妥当性を再確認するまで PASS としない。\n\n---\n\n## 7. 縮退モード検証\n\n- 実機 / BLE が利用できない環境でも、L1〜L3（存在・構造・決定性）は必ず実行し合否を出す。\n- L4（score2）は実機経路が利用できない場合 `skipped` とし、`fail` にはしない。ただし `skipped` を含むランは「正準更新の承認」には使用できない。\n- GPS フィーダが利用できない場合、TC-MOCK-012 はログ内整合のみで検証し、実機投入検証は `skipped` とする。\n\n---\n\n## 8. 失敗時の証跡（Artifact）\n\n必須:\n- 生成コマンドと標準出力ログ\n- 各 gz ファイルの SHA256\n- parse 結果サマリ（行数・必須キー欠落件数・値域違反行番号）\n- score2 実測値（経路種別・rate-ms・repeat を併記）\n- run_id\n\n任意:\n- 舵角 / 車速 / latAcc の時系列プロット\n- 実機診断画面のスクリーンショット\n\n---\n\n## 9. レポート形式\n\n`qa_report.json`\n\nfields:\n- run_id\n- scenario\n- sensor_mode\n- layer (L1|L2|L3|L4)\n- status (pass|fail|skipped)\n- fail_reason\n- measured (score2 等の実測値)\n- evidence_paths\n- reproduction_steps\n",
+  "fact_candidates": [
+    {"type": "data_semantics", "title": "正準モックは8シナリオ9ファイルで構成される", "statement": "正準モックセンサログは8シナリオ・9ファイルで構成され、cruiseのみsmartphoneOnlyとcanConnectedの2ファイルを持ち、他7シナリオはcanConnectedのみである", "status": "candidate"},
+    {"type": "data_semantics", "title": "各モックファイルは60秒・10ms刻み・6000レコードである", "statement": "各正準モックファイルはduration 60秒・サンプリング10ms・レコード数6000行である", "status": "candidate"},
+    {"type": "validation_rule", "title": "レコード数はduration*100と一致する", "statement": "モックファイルのレコード数は duration(秒) * 100 と厳密に一致しなければならない", "status": "candidate"},
+    {"type": "validation_rule", "title": "必須キーの欠落は0件でなければならない", "statement": "ungzip後にparseした全レコードで必須キーの欠落件数が0でなければ不合格とする", "status": "candidate"},
+    {"type": "business_rule", "title": "1シナリオは出車から駐車までを含む", "statement": "cruise.smartphoneOnlyを除く全シナリオは出車→走行→駐車までを1本に含み、9区間比で配分される", "status": "candidate"},
+    {"type": "business_rule", "title": "評価窓はD→R遷移の直前8秒である", "statement": "スコア評価窓はD→Rのシフト遷移の直前8秒区間である", "status": "candidate"},
+    {"type": "constraint", "title": "特徴的走行は評価窓の外に配置される", "statement": "加減速・急制動・急旋回・舵角プロファイルなどの特徴的走行は評価窓（D→R直前8秒）に含まれてはならない", "status": "candidate"},
+    {"type": "business_rule", "title": "評価窓直前は共通減速プロファイルである", "statement": "評価窓の直前区間は全シナリオ共通で40km/hから0km/hへ-0.21Gで減速する", "status": "candidate"},
+    {"type": "business_rule", "title": "後退区間は8km/h・±0.08Gである", "statement": "後退（Rレンジ）区間の車速は8km/h、加減速は±0.08Gである", "status": "candidate"},
+    {"type": "constraint", "title": "cruise.smartphoneOnlyは出車・駐車を含まない", "statement": "cruise.smartphoneOnlyのみ出車区間と駐車区間を含まず走行区間のみで構成される", "status": "candidate"},
+    {"type": "constraint", "title": "正準生成で--loopを使用しない", "statement": "正準モックの生成において--loopオプションは使用してはならない", "status": "candidate"},
+    {"type": "business_rule", "title": "accel_decelは20秒周期の加減速である", "statement": "accel_decelは20秒周期で、8秒+0.21Gで0→60km/h、4秒60km/h定速、8秒-0.21Gの緩減速を繰り返す", "status": "candidate"},
+    {"type": "business_rule", "title": "hard_brakeは走行区間の3点で制動する", "statement": "hard_brakeは走行区間Dの相対位置0.20/0.45/0.70で3回制動し、3.0秒で60→10km/h（約-0.47G）、4.0秒で10→60km/h（約+0.35G）となる", "status": "candidate"},
+    {"type": "business_rule", "title": "sharp_curveは40km/h定速で正弦波ヨーレートを持つ", "statement": "sharp_curveは40km/h定速でyawRate=A*sin(2πt/8.0)を持ち、latAccピークは0.30Gちょうど、steeringAngleピークは±180degである", "status": "candidate"},
+    {"type": "business_rule", "title": "mixedは4等分した走行区間を連結する", "statement": "mixedは走行区間Dを4等分しcruise→accel_decel→hard_brake→sharp_curveを連結し、各境界で車速・heading・lat/lngを引き継ぐ", "status": "candidate"},
+    {"type": "business_rule", "title": "steer_*はcruiseと同一区間比・速度で舵角のみ差し替える", "statement": "steer_stable/steer_wobble_weak/steer_wobble_strongはcruiseと同一の9区間比・速度プロファイル（区間3は40km/h定速）を持ち、区間3の舵角のみを差し替える", "status": "candidate"},
+    {"type": "validation_rule", "title": "steer_*はturnSignal=0かつ|steeringAngle|<=15である", "statement": "steer_*3本の全レコードでturnSignal=0かつ|steeringAngle|<=15が維持されなければならない", "status": "candidate"},
+    {"type": "qa_expectation", "title": "steer_*の区間3で10秒ゲートが37.2秒で成立する", "statement": "steer_*の区間3において、37.2秒の時点で10秒ゲートが成立していること", "status": "candidate"},
+    {"type": "business_rule", "title": "steer_stableは4秒階段の舵角巡回である", "statement": "steer_stableは乱数を用いず、4秒ごとに0°→+8°→-8°を巡回し区間内は値を保持する", "status": "candidate"},
+    {"type": "business_rule", "title": "steer_wobbleは決定的LCGで±2°を生成する", "statement": "steer_wobble_*はMath.randomを使わず、seed=12345から seed=(seed*1103515245+12345)&0x7fffffff、u=seed/0x7fffffff、angle=(u*2-1)*2.0 で±2°の舵角を生成する", "status": "candidate"},
+    {"type": "business_rule", "title": "wobbleのduty比はweak0.25/strong1.0である", "statement": "steer_wobble_weakはduty=0.25、steer_wobble_strongはduty=1.0で、区間3経過秒tが(t%4)/4<dutyのときのみ新角度を採用しそれ以外は直前値を保持する", "status": "candidate"},
+    {"type": "data_semantics", "title": "GPSは東京駅起点の相対計算である", "statement": "GPS座標は東京駅(35.681236, 139.767125)を起点とする相対計算で生成される", "status": "candidate"},
+    {"type": "constraint", "title": "GPS生成に乱数を用いてはならない", "statement": "GPS座標生成に乱数を使用してはならず、同一条件では常に同一値が得られること", "status": "candidate"},
+    {"type": "api_contract", "title": "geolocation.speedは車速のm/s換算である", "statement": "geolocation.speed は canData.vehicleSpeed / 3.6 に一致する", "status": "candidate"},
+    {"type": "external_integration_rule", "title": "実機GPS投入はfeederでlat/lng/accuracyのみ行う", "statement": "実機へのGPS投入はsrc/data/tools/mock-gps-feeder.pyで latitude / longitude / accuracy のみを1Hz・センサログ100レコードごと・合計60点投入する", "status": "candidate"},
+    {"type": "qa_expectation", "title": "score2判定は実機BLE 100ms経路の値で行う", "statement": "score2の合否判定は実機BLE 100ms経路（repeat=0）で得た値を用いる", "status": "candidate"},
+    {"type": "qa_expectation", "title": "DemoData 10ms全件の値は判定に使わない", "statement": "DemoDataの10ms全件再生で得たscore2は合否判定に使用せず参考値としてのみ記録する", "status": "candidate"},
+    {"type": "qa_expectation", "title": "steer_stableのscore2は80以上である", "statement": "steer_stableのscore2は80以上であること（参考実測87.2）", "status": "candidate"},
+    {"type": "qa_expectation", "title": "steer_wobble_weakのscore2は40以上70未満である", "statement": "steer_wobble_weakのscore2は40以上70未満であること（参考実測57.1）", "status": "candidate"},
+    {"type": "qa_expectation", "title": "steer_wobble_strongのscore2は20未満である", "statement": "steer_wobble_strongのscore2は20未満であること（参考実測7.4）", "status": "candidate"},
+    {"type": "qa_expectation", "title": "score2の大小関係が保たれる", "statement": "score2はstable > weak > strong の大小関係を満たすこと", "status": "candidate"},
+    {"type": "constraint", "title": "既存6ファイルのバイト列を変更しない", "statement": "既存6ファイル（cruise×2/accel_decel/hard_brake/sharp_curve/mixed）はプロファイルおよびバイト列を変更してはならず、再生成でバイト不一致となった場合は上書きしない", "status": "candidate"},
+    {"type": "validation_rule", "title": "生成は決定的で再現バイト一致する", "statement": "同一コマンドによる再生成結果は前回生成物とバイト一致しなければならない", "status": "candidate"},
+    {"type": "constraint", "title": "スコアロジックとBLE符号化は変更禁止である", "statement": "scoreLogicFunction.txt / scoreLogic.json / score-logic.ts / src/data/src/app/** / BLE符号化 / エミュレータは変更してはならない", "status": "candidate"},
+    {"type": "constraint", "title": "steer_*のsmartphoneOnly版はcommitしない", "statement": "steer_*のsmartphoneOnly版は生成可能だが正準としてcommitしない", "status": "candidate"},
+    {"type": "qa_expectation", "title": "実機経路が使えない場合score2はskippedとする", "statement": "実機BLE経路が利用できない環境ではscore2検証をskippedとし失敗扱いにしないが、skippedを含むランは正準更新の承認に使用できない", "status": "candidate"},
+    {"type": "data_semantics", "title": "舵角値は物理値域と量子化を経て出力される", "statement": "生成された舵角値は既存の物理値域制約とfloor(x+0.5)量子化を通した上で出力される", "status": "candidate"}
+  ],
+  "open_questions": [
+    "9区間比の具体的な配分値（各区間の秒数または比率）がcontextに明示されていない。生成器gen-mock-sensorlog.mjsの実装値を正とするのか、仕様側で数値を固定するのかQA/Middlewareで確定が必要。確定しないと区間境界の自動検証（TC-MOCK-014〜019）を数値で書けない。",
+    "sharp_curveのyawRate振幅Aの具体値が未確定。latAccピーク0.30Gちょうど・steeringAngleピーク±180degから逆算する導出式なのか固定値なのか不明。確定しないとTC-MOCK-017の許容誤差を定義できない。",
+    "hard_brakeの相対位置0.20/0.45/0.70が参照する『D区間』の起点・終点定義（Dレンジ投入時刻か走行区間3の開始時刻か）が未確定。時刻算出の基準がずれると制動位置検証が破綻する。",
+    "『区間3の37.2秒で10秒ゲートが成立する』の37.2秒がシナリオ全体の経過秒か区間3内の経過秒かが未確定。判定タイミングの検証実装に直結する。",
+    "score2以外のスコア（score1/overAll/scoreA/scoreB）についてsteer_*3本の期待値が未定義。既存ファクトによりCAN版はscore1/score2/overAll/scoreA/scoreBを設定するため、overAllが閾値判定に影響するか確認が必要。",
+    "既存6ファイルのバイト一致検証に用いる基準ハッシュ（SHA256）の管理場所が未定。CI（Infra）で保持するかリポジトリにチェックサムファイルを置くか要確認。",
+    "cruise.smartphoneOnlyは出車・駐車を含まないため評価窓が成立せず、既存ファクトのとおり全項目100の未算出になると想定されるが、これを『期待される正常値』として合格扱いにするかMiddleware/QAで確定が必要。",
+    "mock-gps-feeder.pyによる実機GPS投入60点と、センサログ内のGPS値（10ms解像度）との整合をどこまで検証するかが未確定。1Hz間引きの許容ずれ幅の定義が必要。",
+    "score2受入の再測定を要するトリガ（スコアロジックやBLE符号化に変更が入った場合の運用）が未定義。閾値の再ベースライン手順をどのドメインが承認するか要確認。"
+  ],
+  "rationale_notes": [
+    "score2の判定経路を実機BLE 100ms（repeat=0）に固定するのは、DemoDataの10ms全件経路ではサンプリング密度が異なりエントロピー系指標の値が分離しないため。参考実測87.2/57.1/7.4はこの経路で得た値であり、経路を変えると閾値の意味が失われる。",
+    "steer_*3本をcruiseと同一の区間比・速度で構成するのは、score2の差分要因を舵角のみに限定し、他指標の変動を交絡させないための設計。",
+    "wobbleでMath.randomを禁止し固定seedのLCGを用いるのは、生成物のバイト一致（回帰検出）を成立させるため。GPSで乱数を禁止するのも同じ理由。",
+    "特徴的走行を評価窓の外に置くのは、既存ファクトのとおりscore1がparkingActionのシフト遷移（D→R直前8秒）のみで判定されるため、走行特徴が駐車評価に混入しないようにする意図。",
+    "既存6ファイルのバイト不変を必須にするのは、既に取得済みの回帰基準値（accel_decel/hard_brake/mixedの10秒ゲート僅差未達を含む観測結果）を維持するため。不一致は生成器の意図しない挙動変化のシグナルとして扱う。",
+    "検証をL1（存在）/L2（構造・値域）/L3（決定性）/L4（業務ルール=score2）に階層化したのは、実機やBLE環境が使えない状況でもL1〜L3で回帰を検出し続けられるようにするため。",
+    "L4のskippedを許容しつつ『正準更新の承認には使えない』としたのは、縮退モードでの検証継続とゲートの厳格さを両立させるため。"
+  ]
+}
+```
