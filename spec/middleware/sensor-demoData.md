@@ -1,62 +1,114 @@
-# middleware.sensor.demoData — センサログ再生シングルトン
+<!-- 作成: 2026-07-31 14:36:09 JST | 更新: 2026-09-10 17:32:04 JST -->
 
-## 概要
-`DemoData` は実センサーの代替として、過去のセンサログ (gzip+Base64) と動画 (webm) を再生する **シングルトン**。ブラウザ（[[ui.edit.page]]）でのアップロード、または実機非対応環境での確認に用いる。
-
-## 真実源
-- `src/data/src/app/data/demo-data.ts`
-
-## 静的 API
-- `DemoData.initialize(file, logService)` — `File` と `LogService` をシングルトンに注入
-- `DemoData.instance(): DemoData` — シングルトン取得（未生成なら `new DemoData()`）
-
-## 内部状態
+```json
+{
+  "required_changes": [
+    {"node": "middleware.sensor.demoData", "entrypoint": "spec/middleware/sensor-demoData.md", "description": "正準モックログ 9 ファイルの命名規則・入力スキーマ前提・skip 条件・canData ゼロ補充・timestamp 上書き・DemoData 件数閾値0を明記する"}
+  ],
+  "suggested_impacts": [
+    {"domain": "qa", "severity": "must", "reason": "正準モック sensor-log.<scenario>.<sensorMode>.txt.gz 9ファイルの生成・schema・scenarios は qa.mockdata.sensorlog.* を真実源とするため整合確認が必要"},
+    {"domain": "middleware", "severity": "must", "reason": "DemoData 件数閾値0（>0でデモ）の判定は middleware.sensor.service 側の実センサー/デモ切替と一致させる必要がある"},
+    {"domain": "ui", "severity": "should", "reason": "ui.edit.page のアップロード、ui.driving.page の movieFile 参照がデモ再生の前提となる"}
+  ],
+  "requirements_context": "DemoData は gzip+Base64 のセンサログ（JSON Lines、1行 = {date, sensor}）と webm 動画を再生するシングルトン。UC12（編集とデモ再生）・UC06（運転診断の実行）で使用。入力行のうち必須キー（videoTime/geolocation/acceleration/gyroscope/magnetometer）を欠く行は skip する。canData が欠落する旧スマホのみログでは convertOldData がゼロ値ダミーを補充する（このロジックは変更しない）。getSensorLogData() は再生時に sensor.timestamp を Date.now() で上書きする。テスト用の正準モックは qa.mockdata.sensorlog.generator が生成する sensor-log.<scenario>.<sensorMode>.txt.gz の 9 ファイル（cruise × smartphoneOnly/canConnected、accel_decel / hard_brake / sharp_curve / mixed / steer_stable / steer_wobble_weak / steer_wobble_strong × canConnected）。ログの schema / scenarios / 量子化 / 端末姿勢は qa.mockdata.sensorlog.schema および qa.mockdata.sensorlog.scenarios に従い、DemoData 側で定義しない。実センサーとデモの切替は getSensorLogDataSize() > 0 でデモとする閾値 0 とし、middleware.sensor.service の判定と一致させる。smartphoneOnly のログでは sensor.service 側の lastCanData ゼロ埋めにより CAN 版スコアが未算出（全項目100）となる既知の実装実態がある。",
+  "fact_candidates": [
+    {
+      "type": "data_semantics",
+      "title": "センサログ 1 行は {date, sensor} 形式である",
+      "statement": "DemoData が読み込むセンサログの 1 行は JSON オブジェクト {date, sensor} であり、DemoData は sensor 部分のみを使用する",
+      "status": "candidate"
+    },
+    {
+      "type": "business_rule",
+      "title": "必須キー欠落行はスキップされる",
+      "statement": "unzipped() は videoTime / geolocation / acceleration / gyroscope / magnetometer のいずれかを欠く行を読み飛ばす",
+      "status": "candidate"
+    },
+    {
+      "type": "business_rule",
+      "title": "canData 欠落時はゼロ値で補充される",
+      "statement": "convertOldData() は sensor に canData が存在しない場合にゼロ値のダミー canData を補充する",
+      "status": "candidate"
+    },
+    {
+      "type": "constraint",
+      "title": "convertOldData のゼロ補充ロジックは変更しない",
+      "statement": "convertOldData() における canData ゼロ補充の実装は本改修で変更してはならない",
+      "status": "candidate"
+    },
+    {
+      "type": "business_rule",
+      "title": "再生時に timestamp を Date.now() で上書きする",
+      "statement": "getSensorLogData() はサンプルを返す際に sensor.timestamp を取り出し時点の Date.now() に置き換える",
+      "status": "candidate"
+    },
+    {
+      "type": "business_rule",
+      "title": "DemoData 件数閾値は 0 でデモ判定",
+      "statement": "getSensorLogDataSize() が 0 より大きい場合にデモ再生モードと判定する",
+      "status": "candidate"
+    },
+    {
+      "type": "constraint",
+      "title": "デモ判定閾値は sensor.service と一致させる",
+      "statement": "DemoData の件数閾値 0（>0 でデモ）は middleware.sensor.service の実センサー/デモ切替判定と一致していなければならない",
+      "status": "candidate"
+    },
+    {
+      "type": "external_integration_rule",
+      "title": "正準モックログは qa.mockdata.sensorlog.generator が生成する",
+      "statement": "DemoData が読み込む正準モックログは qa.mockdata.sensorlog.generator が生成する sensor-log.<scenario>.<sensorMode>.txt.gz である",
+      "status": "candidate"
+    },
+    {
+      "type": "data_semantics",
+      "title": "正準モックログは 9 ファイル構成である",
+      "statement": "正準モックログは cruise × smartphoneOnly/canConnected の 2 ファイルと、accel_decel / hard_brake / sharp_curve / mixed / steer_stable / steer_wobble_weak / steer_wobble_strong × canConnected の 7 ファイルの計 9 ファイルである",
+      "status": "candidate"
+    },
+    {
+      "type": "constraint",
+      "title": "ログの schema と scenarios の真実源は QA 側にある",
+      "statement": "センサログの schema / scenarios / 量子化 / 端末姿勢の定義は qa.mockdata.sensorlog.schema および qa.mockdata.sensorlog.scenarios に従う",
+      "status": "candidate"
+    },
+    {
+      "type": "business_rule",
+      "title": "複数ログファイルを時系列で連結再生する",
+      "statement": "DemoData は sensorLogFiles に追加された複数ファイルを sensorLogFilesIndex 順に連結して 1 走行として再生する",
+      "status": "candidate"
+    },
+    {
+      "type": "business_rule",
+      "title": "seek は videoTime 範囲でファイルを特定してから前進する",
+      "statement": "seekSensorLogData(videoTime) は reset() 後に fileInfo.minVideoTime <= videoTime <= fileInfo.maxVideoTime を満たすファイルまで移動し、currentVideoTime >= videoTime に達するまで 1 件ずつ進める",
+      "status": "candidate"
+    },
+    {
+      "type": "business_rule",
+      "title": "初回ファイル追加時に再生位置が初期化される",
+      "statement": "pushSensorLogFile() は最初のファイル追加時に reset() を呼び、再生を開始可能な状態にする",
+      "status": "candidate"
+    },
+    {
+      "type": "data_semantics",
+      "title": "smartphoneOnly ログでは CAN 版スコアが未算出になる",
+      "statement": "smartphoneOnly のログ再生時は sensor.service の lastCanData ゼロ埋めにより CAN 版スコアロジックが null を返し全項目 100 となる（実装実態）",
+      "status": "candidate"
+    }
+  ],
+  "open_questions": [
+    "正準モック 9 ファイルをアプリ側のどこから読み込むか（assets 同梱か、ui.edit.page からの手動アップロードのみか）が未確定。QA/UI 判断が必要で、決まらないと UC06 の自動テスト手順が定まらない。",
+    "steer_* / mixed など canConnected 専用シナリオに対応する smartphoneOnly 版が存在しない理由（意図的な非対応か未生成か）が未確定。QA 判断が必要で、決まらないとスマホのみモードのカバレッジ評価ができない。",
+    "timestamp を Date.now() で上書きする一方 videoTime は元値を保持するため、ログ内相対時刻と実時刻がずれる。スコアロジックが timestamp 差分に依存する場合の影響が未検証で、middleware.score-logic 側の確認が必要。",
+    "必須キー欠落行の skip が発生した件数を sensorLogDataSize に反映するか（skip 後の実件数か行数か）が仕様上明示されておらず、デモ判定閾値 0 の境界挙動に影響する。",
+    "convertOldData のゼロ補充 canData がどのフィールドをどの値（0 / shiftIndication=0 等）で埋めるかの完全なリストが未確定。DB/QA と要確認。"
+  ],
+  "rationale_notes": [
+    "DemoData は『再生と互換変換』の責務のみを持ち、ログの内容定義（schema・シナリオ・量子化・端末姿勢）は QA 側モックデータ仕様を真実源とする。二重定義を避けるため本ノードでは参照に留める。",
+    "convertOldData のゼロ補充は旧スマホのみログとの後方互換のための措置であり、変更すると過去ログの再生互換が壊れるため凍結する。ただし smartphoneOnly で CAN 版スコアが全項目 100 になる既知事象の原因の一部でもある。",
+    "timestamp の Date.now() 上書きは、実センサー経路と同じ『到着時刻』セマンティクスを保つための意図的な処理。ログ内の相対時刻は videoTime が担う。",
+    "デモ判定閾値を DemoData 側と sensor.service 側で二箇所に持つ構造は乖離リスクがあるため、値 0 の一致を仕様として明記した。"
+  ]
+}
 ```
-sensorLogDataSize: number                 // 全ファイル合計サンプル数
-sensorLogFiles: Array<string>             // Base64 gzip 文字列の一覧
-sensorLogFilesInfo: Array<{ length, minVideoTime, maxVideoTime, index }>
-sensorLogFilesIndex: number               // 現在再生中のファイル
-sensorLogData: Array<any>                 // 現在ファイルの展開済みサンプル
-sensorLogDataIndex: number
-drivingVideFile: string
-_minVideoTime, _maxVideoTime: number      // 全ファイル通しての min/max
-_movieFile: any                           // 動画 Blob（アップロード時に保持）
-```
-
-## API
-| メソッド | 挙動 |
-|---|---|
-| `clearAll()` | 全内部状態をリセット |
-| `reset()` | `sensorLogFilesIndex=0` にして `load()` |
-| `load()` (private) | 現ファイルを解凍して `sensorLogData` にセットし `sensorLogDataIndex=0`。ファイル終端なら以降 `getSensorLogData()` は undefined |
-| `pushSensorLogFile(base64Encoded)` | 新しいログファイルを追加。`unzipped(base64, true)` で解凍+情報だけ取り、`sensorLogFilesInfo` に push。初回追加時は `reset()` を呼んで即再生開始。`sensorLogDataSize` に加算 |
-| `getSensorLogData()` | 現在位置のサンプルを 1 件返す。末尾なら次ファイルを `load()` し再帰呼び出し。`sensor.timestamp` は取り出し時点の `Date.now()` に置換 |
-| `seekSensorLogData(videoTime)` | `reset()` 後、`fileInfo.minVideoTime <= videoTime <= fileInfo.maxVideoTime` を満たすファイルまで移動し、そこから 1 件ずつ進めて `currentVideoTime >= videoTime` に達したら return |
-| `getSensorLogDataSize()` | 全体件数 |
-| `minVideoTime` / `maxVideoTime` | プロパティ getter |
-| `movieFile` | プロパティ get/set（webm Blob 用） |
-
-## `unzipped(base64Encoded, notPush=false)` (private)
-- `atob` で Base64 デコード → `Uint8Array.from` → `pako.ungzip(u8, { to:'string' })` で JSON Lines 文字列を復元。
-- 各行を `JSON.parse(line).sensor` で取り出し、**旧ログスキーマの互換変換** を適用:
-  - `msec` → `videoTime`
-  - `gyroscope.{x,y,z}` → `gyroscope.{beta, gamma, alpha}`
-- 必要フィールド（`videoTime / geolocation / acceleration / gyroscope / magnetometer`）が欠けている行はスキップ。
-- `_minVideoTime / _maxVideoTime` を更新。
-- `notPush=false` のときは自身の `sensorLogData` を差し替え。true のときは差し替えず情報だけ返す（`pushSensorLogFile` から利用）。
-
-## `convertOldData(sensorData)` (private)
-過去バージョンでフォーマットが変わったフィールドを取り出し時点で正規化:
-- `acceleration.x/y/z` / `lowPass` / `rotate` / `accelerationIncludingGravity.lowPass` / `gyroscope.rotate` などの前処理計算値を削除
-- `acceleration.gravity_x/y/z` → `acceleration.accelerationIncludingGravity.{x,y,z}`
-- `acceleration.beta/gamma/alpha` → `acceleration.rotationRate.{beta, gamma, alpha}`
-- `canData` が無い場合はゼロ値でダミーを補充（旧スマホのみログ用）
-
-## 業務ルール
-- ログは 1 走行 = 複数ファイルに分割されている可能性があり、時系列で連結して再生する。
-- 動画（webm）は 1 走行 1 ファイルの想定。`URL.createObjectURL(movieFile)` で再生。
-- 実センサーとデモの切替は [[middleware.sensor.service]] が `getSensorLogDataSize()` を見て自動判定。
-
-## 関連ノード
-- 依存: [[infra.file.storage]]、[[middleware.log.service]]、pako
-- 呼び出し元: [[middleware.sensor.service]]、[[ui.edit.page]]、[[ui.driving.page]]（`loadVideo` で `movieFile` を参照）
