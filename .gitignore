@@ -9,3 +9,6 @@
 
 # 各種スクリプトが作る日時付きバックアップ (proposal #21)
 *.bak.[0-9]*-[0-9]*
+
+# 先方から受領した仕様資料の原本（内容は Smith の fact / design change に投入する）
+/docs/design/

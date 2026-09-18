@@ -60,6 +60,11 @@ CHARACTERISTIC_UUID = '00002311-0000-1000-8000-00805f9b34fb'
 #: notify するペイロードの固定長 [byte]
 PAYLOAD_LEN = 12
 
+#: --inject-invalid が受け付ける kind（fact #55 / proposal #168）。
+#: 小文字完全一致のみで、正規化（lower/strip）は行わない。
+#: 未知値は main() 冒頭で exit code 1 + [ERROR] 1 行にして弾く（proposal #168）。
+INJECT_INVALID_KINDS = ('short11', 'long13', 'zeros', 'ones')
+
 #: 送信周期の既定値と可変範囲 [ms]（proposal #14 §4 / #15 §4。暫定値）
 DEFAULT_RATE_MS = 100
 MIN_RATE_MS = 10
@@ -149,6 +154,29 @@ def encode_can_data(can):
     payload[10] = u8(can.get('shiftIndication', 0))
     payload[11] = u8(can.get('turnSignal', 0))
     return bytes(payload)
+
+
+def apply_inject_invalid(payload, kind):
+    """
+    Phase 2-2（TC-BLE-EMU-020 / fact #55）用に、正常符号化済みの 12 バイトを
+    不正ペイロードへ加工して返す。
+
+    notify 直前でのみ呼ぶ。符号化・集約・読み込みの経路は通さないので、
+    --raw / --loop / --rate-ms の挙動には影響しない（proposal #168）。
+
+    short11 / long13 は元フレームを基に加工するためフレームごとに中身が変わり、
+    zeros / ones は固定値。kind は main() で検証済みのため未知値は来ない。
+    """
+    if kind == 'short11':
+        # offset 11 = turnSignal を落として長さ過小にする
+        return payload[:PAYLOAD_LEN - 1]
+    if kind == 'long13':
+        return payload + b'\x00'
+    if kind == 'zeros':
+        return b'\x00' * PAYLOAD_LEN
+    if kind == 'ones':
+        return b'\xff' * PAYLOAD_LEN
+    raise ValueError('未知の --inject-invalid kind: %s' % kind)
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +406,8 @@ class CanCharacteristic(dbus.service.Object):
     middleware.sensor.service のデコードへ渡す。
     """
 
-    def __init__(self, bus, service, frames, rate_ms, loop_forever, verbose):
+    def __init__(self, bus, service, frames, rate_ms, loop_forever, verbose,
+                 inject_invalid=None):
         self.path = CHRC_PATH
         self.bus = bus
         self.service = service
@@ -386,6 +415,9 @@ class CanCharacteristic(dbus.service.Object):
         self.rate_ms = rate_ms
         self.loop_forever = loop_forever
         self.verbose = verbose
+        #: None なら現行どおり正常 12 バイト。指定時は全フレームを当該 kind で
+        #: 送出する（部分適用モードは作らない / fact #55）。
+        self.inject_invalid = inject_invalid
 
         self.notifying = False
         self.index = 0
@@ -460,6 +492,11 @@ class CanCharacteristic(dbus.service.Object):
         payload = self.frames[self.index]
         self.index += 1
         self.sent_count += 1
+
+        # notify 直前で加工する（proposal #168）。以降の self.value と
+        # format_send_lines には加工後のバイト列がそのまま渡る。
+        if self.inject_invalid is not None:
+            payload = apply_inject_invalid(payload, self.inject_invalid)
 
         self.value = dbus.Array([dbus.Byte(b) for b in payload], signature='y')
         self.PropertiesChanged(GATT_CHRC_IFACE, {'Value': self.value}, [])
@@ -583,6 +620,14 @@ def parse_args(argv):
              'モックは 10ms 刻みなので再生が 1/10 速度になるが、'
              '送出値がモックの canData と 1 対 1 対応するためバイト単位の突き合わせに使える',
     )
+    parser.add_argument(
+        '--inject-invalid', type=str, default=None, metavar='KIND',
+        help='Phase 2-2（TC-BLE-EMU-020 / fact #55）用に不正ペイロードを送出する。'
+             '指定できるのは %s のいずれか（小文字完全一致）。'
+             '既定は未指定で、その場合は正常な %d バイトのみを送出する。'
+             '指定時は全フレームを当該 kind で送出する'
+             % (', '.join(INJECT_INVALID_KINDS), PAYLOAD_LEN),
+    )
     # 以下 2 つは BLE 契約・送出データに影響しない実行上の補助オプション
     parser.add_argument(
         '--adapter', default='hci0', metavar='NAME',
@@ -609,6 +654,16 @@ def main(argv=None):
             % (MIN_RATE_MS, MAX_RATE_MS, args.rate_ms)
         )
 
+    # 値域違反は argparse に委ねず、--rate-ms と同じ様式で弾く（proposal #168）。
+    # choices= を使うと exit code 2 + usage テキストになり、fact #50 が定めた
+    # 「exit 1 / [ERROR] 1 行 / BLE 非到達」と不統一になるため。
+    # 検証順序は --rate-ms → --inject-invalid（両方不正なら前者のみ出力）。
+    if args.inject_invalid is not None and args.inject_invalid not in INJECT_INVALID_KINDS:
+        raise SystemExit(
+            '[ERROR] --inject-invalid は %s のいずれかを指定してください（指定値: %s）'
+            % (', '.join(INJECT_INVALID_KINDS), args.inject_invalid)
+        )
+
     frames = load_can_frames(args.source, raw=args.raw)
     print('[source] %s' % args.source)
     if args.raw:
@@ -623,6 +678,11 @@ def main(argv=None):
                  frames[0].hex(' ')))
         print('[source] 実時間 %.1f 秒で送出します（%d 件 × %dms）'
               % (len(frames) * args.rate_ms / 1000.0, len(frames), args.rate_ms))
+
+    # 証跡要件（fact #55 §3-3）: 起動パラメータを stdout に残す。
+    # [source] 行を分断しないよう、その直後・[adapter] 行の手前に出す。
+    if args.inject_invalid is not None:
+        print('[inject-invalid] %s' % args.inject_invalid)
 
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     bus = dbus.SystemBus()
@@ -639,7 +699,8 @@ def main(argv=None):
     app = Application(bus)
     service = CanService(bus)
     chrc = CanCharacteristic(
-        bus, service, frames, args.rate_ms, args.loop, args.verbose
+        bus, service, frames, args.rate_ms, args.loop, args.verbose,
+        args.inject_invalid
     )
     service.add_characteristic(chrc)
     app.add_service(service)

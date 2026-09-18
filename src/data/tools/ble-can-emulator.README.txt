@@ -196,6 +196,35 @@ B に切り替えてよいのは、A が使えない次の場合だけ:
                     送出値がモックの canData と 1 対 1 対応するため、
                     バイト単位の突き合わせ検証に使う。
 
+  --inject-invalid KIND
+                    Phase 2-2（TC-BLE-EMU-020）用に不正ペイロードを送出する
+                    （fact #55 / proposal #168）。既定は未指定＝正常 12 バイトのみ。
+                    指定できるのは次の 4 つ（小文字完全一致。正規化しない）。
+
+                      short11  正常フレームの先頭 11 バイト（offset 11 =
+                               turnSignal を落とす）。長さ過小。
+                      long13   正常フレーム 12 バイト + 0x00 を 1 バイト付加。
+                               長さ過大。
+                      zeros    0x00 × 12。長さは正・全フィールド最小
+                               （steer -1080 deg / lateral -64.0 m）。
+                      ones     0xFF × 12。長さは正・全フィールド最大
+                               （speed 255 km/h / steer +5473.5 deg）。
+
+                    指定時は全フレームを当該 kind で送出する（途中混入・件数
+                    指定は作らない。決定的に再現させるため）。加工は notify 直前
+                    で行うため、符号化・10 件集約・--raw / --loop / --rate-ms の
+                    挙動は変わらない。起動時に [inject-invalid] <kind> を 1 行出す。
+
+                    ★ Phase 1 では指定しないこと。12 バイト条件のゲートを
+                      無効化してはならない。
+
+                    許容値以外（空文字列を含む）を渡した場合は --rate-ms と
+                    同じ様式で弾く。BLE には一切到達せず exit code 1、
+                    標準エラーへ次の 1 行のみを出す（proposal #168）。
+                      [ERROR] --inject-invalid は short11, long13, zeros, ones の
+                      いずれかを指定してください（指定値: X）
+                    --rate-ms と両方不正なら --rate-ms のエラーのみ出る。
+
   --adapter NAME    使用する Bluetooth アダプタ名（既定: hci0）。
                     ※ BLE 契約・送出データに影響しない実行上の補助オプション。
 
@@ -673,11 +702,32 @@ proposal #20 (synced) により、Phase 2 は **異常系に限定** される�
 
  (2-2) 不正ペイロード
    12 バイト固定長の契約（§5）を破る値を送ったときの挙動を確認する。
-   長さ違い（11 / 13 バイト）、全 0x00、全 0xFF など。
+   対象は short11 / long13 / zeros / ones の 4 kind（fact #55）。
+   empty（0 バイト）・非数値・欠落は対象外。
 
-   ※ エミュレータ本体に不正値送出機能は無い。本項目の実施には
-     ble-can-emulator.py への一時的な改造か専用オプションの追加が必要で、
-     それ自体が仕様判断になるため、着手前に propose_decision を通すこと。
+   実施は --inject-invalid で行う（fact #55 で確定・実装済み）。4 kind を
+   1 つずつ、それぞれ別ランで送出する。
+
+     python3 tools/ble-can-emulator.py \
+         --source mock/sensor-log.cruise.canConnected.txt.gz \
+         --inject-invalid short11
+
+   合格条件（4 kind それぞれで次の 3 点をすべて満たすこと）:
+     1. アプリがクラッシュしない（FC / ANR / fatal exception が出ない）
+     2. BLE 接続が維持され、正常フレームに戻したとき正常復帰できる
+        （同一接続のまま、またはエミュレータを正常設定で再起動して再接続でも可）
+     3. 実機 logcat を evidence として採取し qa_report.json の
+        evidence_paths に残す
+
+   FAIL 条件:
+     - アプリが FC する
+     - 不正フレーム受信を契機に切断され、正常フレームに戻しても復帰しない
+     - 合格させるのにアプリ改変（src/data/src/app/** の変更）が必須になる
+
+   ※ short11 / long13 を受けたときアプリがフレームを捨てるか途中まで読むかは
+     仕様未定義のままで、観測に留めて判定には使わない。zeros / ones は長さが
+     正のためデコード自体は成立する見込みで、物理値域外の値（例 speed 255）が
+     そのまま流れることを観測するのみ。
 
  (2-3) rate 境界
    --rate-ms の下限 10 / 上限 1000 の境界値で送出し、取りこぼし率を測る。
