@@ -1,16 +1,10 @@
-# ER図 — driving-score.db
-
-## 概要
-仕様書 4 ノード（score model / score repository / user model / user repository）から、`driving-score.db` に存在するテーブルを抽出しました。
-
-- 実 DB テーブル: `users`, `score`, `score_history`, `capability_score`
-- リレーションは `score_id` を軸とした 1:N が中心（明示的な外部キー制約は SQLite 上定義されていないが、仕様書の記述に基づき論理 FK として記載）
-
 ```mermaid
 erDiagram
-    USERS ||--o{ SCORE : owns
-    SCORE ||--o{ SCORE_HISTORY : has
-    SCORE ||--o{ CAPABILITY_SCORE : has
+    USERS ||--o{ SCORE : "has"
+    USERS ||--o{ SCORE_HISTORY : "has"
+    USERS ||--o{ CAPABILITY_SCORE : "has"
+    SCORE ||--o{ SCORE_HISTORY : "has_messages"
+    SCORE ||--o{ CAPABILITY_SCORE : "has_capability"
 
     USERS {
         TEXT user_id PK
@@ -18,64 +12,70 @@ erDiagram
         INTEGER sex
         INTEGER birth_year
         INTEGER birth_month
-        INTEGER height
+        REAL height
         INTEGER prefecture
     }
 
     SCORE {
         INTEGER score_id PK
         TEXT user_id FK
-        INTEGER score_over_all
-        INTEGER score1
-        INTEGER score2
-        INTEGER score3
-        INTEGER score4
+        REAL score_over_all
+        REAL score1
+        REAL score2
+        REAL score3
+        REAL score4
     }
 
     SCORE_HISTORY {
+        INTEGER message_id PK
+        TEXT user_id FK
         INTEGER score_id FK
-        INTEGER timestamp
-        INTEGER message_id
         TEXT message_key
         TEXT message_type
         TEXT message_text
         TEXT intersection
-        INTEGER score
+        INTEGER timestamp
+        REAL score
     }
 
     CAPABILITY_SCORE {
         INTEGER score_id FK
+        TEXT user_id FK
         INTEGER timestamp
-        INTEGER score_a
+        REAL score_a
+        REAL score_b
+        REAL score_c
         TEXT score_a_message
-        INTEGER score_b
         TEXT score_b_message
-        INTEGER score_c
         TEXT score_c_message
     }
 ```
 
-## リレーション定義
+## 補足説明
 
-| 親 | 子 | 種別 | キー | 根拠 |
-|---|---|---|---|---|
-| USERS | SCORE | 1:N | `users.user_id` → `score.user_id` | score テーブルに `user_id TEXT`、SELECT で `WHERE user_id = ?`、delete が user_id 単位で連鎖削除 |
-| SCORE | SCORE_HISTORY | 1:N | `score.score_id` → `score_history.score_id` | 仕様書に「FK to score.score_id」明記、INNER JOIN ON score_id |
-| SCORE | CAPABILITY_SCORE | 1:N | `score.score_id` → `capability_score.score_id` | INNER JOIN ON score_id、score_id 単位で連鎖削除 |
+### エンティティの出典
+| エンティティ | 出典ノード | 備考 |
+|---|---|---|
+| `USERS` | db.user.repository（CREATE TABLE 明記） | 唯一 DDL が仕様本文に記載されているテーブル |
+| `SCORE` | db.score.repository / db.score.model（`makeDbScore`） | カラムは `makeDbScore` が読む `score_id / score_over_all / score1..4` に限定 |
+| `SCORE_HISTORY` | db.score.repository / db.score.model（`makeDbMessage`） | `Message` と 1:1 対応 |
+| `CAPABILITY_SCORE` | db.score.repository / db.score.model（`makeDbCapabilityScore`） | `CapabilityScore` と 1:1 対応 |
 
-## 補足・注意事項
+### 型について
+- `users.height`、および `score.score_over_all` / `score1..4`、`score_history.score`、`capability_score.score_a/b/c` は **db.schema.corrections §5 の REAL 是正対象**（小数を丸めず保持）。
+- 上図の型名は Mermaid 構文制約により桁指定なしで記述（`TEXT` / `INTEGER` / `REAL`）。
 
-- **PK について**
-  - `users.user_id` は `TEXT PRIMARY KEY`（明示）。
-  - `score.score_id` は `INTEGER PRIMARY KEY`（診断開始タイムスタンプ）。
-  - `score_history` / `capability_score` にはテーブル定義上 PRIMARY KEY 宣言がないため PK は付与していません（`score_id` は FK として保持）。
+### キー・リレーションの根拠
+- `users.user_id` は「TEXT PRIMARY KEY」と DDL に明記。
+- `score.score_id` は「診断開始の UnixTime(ms)、PK 相当」「同一ユーザー内で重複しない前提」と記載されており、PK として記述した。ただし *同一ユーザー内* での一意性という記述であるため、実際に `(user_id, score_id)` の複合 PK かは仕様上未確定（下記参照）。
+- `score_history` / `capability_score` は「`score_id` を介して `score` を参照する」と明記されているため FK として記述。
+- 3 テーブルすべてが「ユーザー単位で削除される」「userId でスコープされる」と記載されているため、`users` から各テーブルへの 1:N を記述。
+- `SCORE → SCORE_HISTORY` / `SCORE → CAPABILITY_SCORE` は、`insertScore` が両テーブルへ「1000 レコード刻みのバルク INSERT」を行う記述から 1:N とした。
 
-- **FK 制約について**
-  - SQLite の CREATE TABLE 文には `FOREIGN KEY` 句が定義されていません。上記 FK は仕様書の記述（「FK to score.score_id」「JOIN ON score_id」「連鎖削除順序」）から読み取れる**論理的な参照関係**です。
-  - `score.user_id` → `users.user_id` も同様に、明示的 FK 制約はなく論理参照です。
-
-- **型の表記**
-  - Mermaid の構文制約により、`INTEGER(11)` 等の桁指定・括弧は使用不可のため、DDL 上の宣言型（`INTEGER` / `TEXT`）のみを記載しています。
-  - 実際には `score*` 系カラムや `height` は INTEGER 宣言でも小数値が格納され得る点は仕様書に記載の通りです（ER 図上は宣言型を採用）。
-
-- **モデルクラス（Message / CapabilityScore / Score / User）** はドメインモデルであり物理テーブルではないため、対応する物理テーブル（`score_history` ⇔ Message、`capability_score` ⇔ CapabilityScore、`score` ⇔ Score、`users` ⇔ User）に集約して表現しています。
+### 仕様上未確定のため図に反映していない点
+- **`score_history` / `capability_score` の PK 定義**：仕様に PK 記述がなく、`message_id` を PK として仮置きしている（`capability_score` には PK 相当の記述が一切ないため FK のみ）。
+- **複合 PK / UNIQUE 制約**：`score_id` の一意性スコープ（ユーザー内か全体か）が未確定。
+- **外部キー制約の宣言有無**：db.user.repository は「外部キー制約は宣言していない（論理的な参照）」と明記。上図の FK は *論理参照* を示す。
+- **`score.hiyari` / `score.intersection`**：モデル（`Score`）には存在するが、`makeDbScore` の復元対象カラムとして仕様に列挙されていないため、カラムとして追加していない。
+- **走行コメントの格納先**：db.score.repository の open_question に「`score` の列か別テーブルか未確定」と記載があるため、コメント用カラムは追加していない。
+- **`score3` / `score4` / `score_c`**：列としては存在するが、CAN 版では算出処理がなく既定値 100 のまま保存される（db.score.model の実装実態）。
