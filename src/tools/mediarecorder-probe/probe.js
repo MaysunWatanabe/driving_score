@@ -228,6 +228,12 @@ async function buildAndMeasure(n, T) {
   ui.download.disabled = false;
   ui.downloadFull.disabled = false;
 
+  // 変種の検証: chunk[0] から EBML ヘッダだけを取り出した構成が再生できるか。
+  // 現行構成は chunk[0] の映像（先頭 1 秒 = 走行開始直後）も含んでしまうため、
+  // ヘッダのみにできれば無関係映像も空白区間も消える。ただし先頭 Cluster の
+  // タイムコードが 0 でなくなるため、再生可否は端末依存であり実測が要る。
+  await measureHeaderOnlyVariant(chunks[0].blob, chunks.slice(from, to), from);
+
   const v = ui.player;
   v.src = URL.createObjectURL(cutBlob);
 
@@ -414,6 +420,99 @@ async function seekTo(v, target, cellId) {
     const detail = `失敗: ${e.name}: ${e.message}`;
     if (cellId) setText(cellId, detail, 'ng');
     return { ok: false, target, actual: null, ev: 'error', detail };
+  }
+}
+
+/**
+ * chunk[0] から「最初の Cluster の手前まで」= EBML ヘッダ部分だけを切り出す。
+ * WebM は EBML ヘッダ → Segment(Info / Tracks) → Cluster... の順なので、
+ * 最初の Cluster ID (0x1F43B675) の位置で切れば再生に必要な定義部が得られる。
+ * 見つからなければ null（chunk[0] 全体を使うしかない）。
+ */
+async function extractHeader(blob) {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  for (let i = 0; i + 4 < buf.length; i++) {
+    if (buf[i] === 0x1f && buf[i + 1] === 0x43
+      && buf[i + 2] === 0xb6 && buf[i + 3] === 0x75) {
+      return { blob: blob.slice(0, i), offset: i, total: buf.length };
+    }
+  }
+  return null;
+}
+
+/**
+ * 「EBML ヘッダのみ + 区間クラスタ」の構成を実際に組み立てて再生できるか測る。
+ * 現行構成（chunk[0] 丸ごと + 区間クラスタ）との比較材料にする。
+ * ここでは判定するだけで、どちらを採るかは propose に委ねる。
+ */
+async function measureHeaderOnlyVariant(chunk0Blob, intervalChunks, fromIdx) {
+  const header = await extractHeader(chunk0Blob);
+  if (!header) {
+    measured.headerOnly = { ok: false, detail: 'chunk[0] に Cluster が見つからず切り出せない' };
+    setText('r-headeronly', measured.headerOnly.detail, 'ng');
+    return;
+  }
+
+  const blob = new Blob(
+    [header.blob].concat(intervalChunks.map((c) => c.blob)),
+    { type: 'video/webm' },
+  );
+  const tcs = await readClusterTimecodes(blob);
+
+  const el = document.createElement('video');
+  el.muted = true;
+  el.playsInline = true;
+  el.style.position = 'fixed';
+  el.style.left = '-9999px';
+  el.style.width = '320px';
+  document.body.appendChild(el);
+  el.src = URL.createObjectURL(blob);
+
+  try {
+    const meta = await new Promise((r) => {
+      el.addEventListener('loadedmetadata', () => r('loadedmetadata'), { once: true });
+      el.addEventListener('error', () => r('error'), { once: true });
+      setTimeout(() => r('timeout'), 8000);
+    });
+
+    const seekStart = el.seekable.length ? el.seekable.start(0) : NaN;
+    const initial = el.currentTime;
+
+    // 区間の中ほどへ seek して、実際に絵が出るかを見る
+    const midTarget = tcs.length > 2 ? tcs[Math.floor(tcs.length / 2)] / 1000 : NaN;
+    let midDetail = '-';
+    let midFrame = null;
+    if (meta === 'loadedmetadata' && Number.isFinite(midTarget)) {
+      const s = await seekTo(el, midTarget, null);
+      midFrame = await probeFirstFrame(el, null);
+      midDetail = `${s.detail} / 描画: ${midFrame.detail}`;
+    }
+
+    const ok = meta === 'loadedmetadata' && !!midFrame && midFrame.ok;
+    measured.headerOnly = {
+      ok,
+      meta,
+      headerBytes: header.offset,
+      chunk0Bytes: header.total,
+      size: blob.size,
+      clusterHead: tcs.slice(0, 4),
+      seekStart,
+      initial,
+      midTarget,
+      midDetail,
+      detail: `${ok ? 'OK' : 'NG'} — loadedmetadata=${meta}, `
+        + `ヘッダ ${header.offset} B / chunk[0] 全体 ${header.total} B, `
+        + `Cluster 先頭 [${tcs.slice(0, 4).join(', ')}] ms, `
+        + `seekable.start=${fmtSec(seekStart)}, 読み込み直後 currentTime=${fmtSec(initial)}, `
+        + `中間 seek(${Number.isFinite(midTarget) ? midTarget.toFixed(1) : '-'} s): ${midDetail}`,
+    };
+    setText('r-headeronly', measured.headerOnly.detail, ok ? 'ok' : 'ng');
+    void fromIdx;
+  } catch (e) {
+    measured.headerOnly = { ok: false, detail: `判定失敗: ${e.name}: ${e.message}` };
+    setText('r-headeronly', measured.headerOnly.detail, 'ng');
+  } finally {
+    el.remove();
   }
 }
 
@@ -715,6 +814,7 @@ function writeSummary() {
     `- 中間 seek（終端寄り）: ${m.seekLate ? m.seekLate.detail : '-'}`,
     `- seek 後の描画: ${m.seekFrame ? m.seekFrame.detail : '-'}`,
     `- Cluster 時刻（ファイル構造）: ${m.clusters ? m.clusters.cut.detail : '-'}`,
+    `- 変種（chunk[0] をヘッダのみに切り詰め）: ${m.headerOnly ? m.headerOnly.detail : '-'}`,
     `- 通し録画の Cluster: ${m.clusters ? `${m.clusters.fullCount} 個、先頭 [${m.clusters.fullHead.join(', ')}] ms` : '-'}`,
     `- タイムライン方式（画面比較）: ${m.timelineDetail ? m.timelineDetail.detail : m.timeline}`,
     `- 構造と画面比較の一致: ${m.clusters && m.timeline
