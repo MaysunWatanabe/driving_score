@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MediaRecorder Probe</title>
+<link rel="stylesheet" href="probe.css">
+</head>
+<body>
+<h1>MediaRecorder Probe</h1>
+<p class="lead">
+  ヒヤリ録画（proposal #227 / #228 / #239）の実装前に、端末の MediaRecorder / WebM の挙動を実測する。
+  アプリ本体には手を触れず、アプリと同一の制約で録画して切り出しを再現する。
+</p>
+
+<section>
+  <h2>1. 設定</h2>
+  <div class="row">
+    <label for="margin">n（ヒヤリ前後秒数）</label>
+    <select id="margin">
+      <option value="15" selected>15（既定）</option>
+      <option value="60">60（最大）</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="warmup">切り出し位置 T（録画開始から何秒後をヒヤリ発生とみなすか）</label>
+    <input id="warmup" type="number" value="40" min="5" step="5">
+  </div>
+  <p class="note">
+    T は n より十分大きくする（T &gt; n でないと「前 n 秒」が確保できず、起点の判定が曖昧になる）。
+    所要時間は T + n 秒。n=60 / T=90 なら 150 秒かかる。
+  </p>
+</section>
+
+<section>
+  <h2>2. 実行</h2>
+  <div class="row">
+    <button id="start" type="button">録画開始</button>
+    <button id="abort" type="button" disabled>中止</button>
+  </div>
+  <div id="phase" class="phase">待機中</div>
+  <progress id="progress" max="100" value="0"></progress>
+</section>
+
+<section>
+  <h2>3. 測定 1 — 切り出しファイルの currentTime の起点</h2>
+  <p class="note">
+    chunk[0] + [T-n, T+n] のクラスタで .webm を組み立て、video 要素に読ませる。
+    <strong>0 起点なら proposal #228 の file-relative がそのまま成立する。
+    T 付近から始まるなら seek が当たらないため #228 の再 propose が要る。</strong>
+  </p>
+  <video id="player" controls playsinline muted></video>
+  <table class="result">
+    <tbody>
+      <tr><th>duration</th><td id="r-duration">-</td></tr>
+      <tr><th>seekable.start(0)</th><td id="r-seekstart">-</td></tr>
+      <tr><th>seekable.end(0)</th><td id="r-seekend">-</td></tr>
+      <tr><th>読み込み直後の currentTime</th><td id="r-initial">-</td></tr>
+      <tr><th>currentTime = 0 を代入した結果</th><td id="r-setzero">-</td></tr>
+      <tr><th>再生開始後 1 秒の currentTime</th><td id="r-after">-</td></tr>
+      <tr><th>中間 seek（ヒヤリ発生点 = n 秒）</th><td id="r-seekmid">-</td></tr>
+      <tr><th>中間 seek（終端寄り = 2n-2 秒）</th><td id="r-seeklate">-</td></tr>
+      <tr><th>seek 後の描画</th><td id="r-seekframe">-</td></tr>
+      <tr><th>Cluster 時刻（ファイル構造）</th><td id="r-clusters">-</td></tr>
+      <tr><th>タイムライン方式（画面比較）</th><td id="r-timeline">-</td></tr>
+      <tr><th>再生の連続性（継ぎ目）</th><td id="r-continuity">-</td></tr>
+      <tr class="verdict"><th>判定</th><td id="r-origin">-</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>4. 測定 2 — 冒頭が再生できるか</h2>
+  <p class="note">
+    1 秒チャンクの先頭がキーフレームとは限らないため、冒頭が崩れる／デコードできない可能性がある。
+    上の video に実際に描画されるかを目視で確認し、あわせて自動判定の結果を見る。
+  </p>
+  <table class="result">
+    <tbody>
+      <tr><th>loadedmetadata</th><td id="r-meta">-</td></tr>
+      <tr><th>videoWidth x videoHeight</th><td id="r-size">-</td></tr>
+      <tr><th>先頭フレームの描画</th><td id="r-firstframe">-</td></tr>
+      <tr><th>error</th><td id="r-error">-</td></tr>
+      <tr class="verdict"><th>判定</th><td id="r-playable">-</td></tr>
+    </tbody>
+  </table>
+  <div class="row">
+    <button id="download" type="button" disabled>切り出した .webm を保存</button>
+    <button id="download-full" type="button" disabled>通し録画の .webm を保存</button>
+  </div>
+</section>
+
+<section>
+  <h2>5. 併せて記録する値</h2>
+  <table class="result">
+    <tbody>
+      <tr><th>チャンク数</th><td id="r-count">-</td></tr>
+      <tr><th>chunk[0] のサイズ</th><td id="r-chunk0">-</td></tr>
+      <tr><th>1 秒チャンクの平均サイズ</th><td id="r-avg">-</td></tr>
+      <tr><th>実効ビットレート</th><td id="r-bitrate">-</td></tr>
+      <tr><th>dataavailable の発火間隔（平均 / 最小 / 最大）</th><td id="r-interval">-</td></tr>
+      <tr><th>n+5 秒保持時のメモリ上限（実測値から算出）</th><td id="r-ring">-</td></tr>
+      <tr><th>実際の mimeType</th><td id="r-mime">-</td></tr>
+      <tr><th>userAgent</th><td id="r-ua">-</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>6. 結果（fact 候補として投入する内容）</h2>
+  <textarea id="summary" rows="18" readonly></textarea>
+  <div class="row">
+    <button id="copy" type="button">クリップボードにコピー</button>
+  </div>
+</section>
+
+<section>
+  <h2>ログ</h2>
+  <pre id="log"></pre>
+</section>
+
+<script src="probe.js"></script>
+</body>
+</html>
