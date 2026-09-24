@@ -650,6 +650,23 @@ async function probeTimeline(v, from, to, naiveLen) {
     });
 
     // 録画開始直後が黒いのか（カメラ立ち上がり）を通し録画側で確認する
+    // 通し録画（空白区間が無い、全チャンクの単純連結）の duration / seekable。
+    // 切り出しファイルが duration=Infinity になる原因が「空白区間」なのか
+    // 「MediaRecorder の出力に尺情報が無い」ことなのかを切り分ける。
+    // 通し録画にも空白は無いので、ここでも Infinity なら空白は無関係と判る。
+    measured.fullTimeline = {
+      duration: full.duration,
+      seekStart: full.seekable.length ? full.seekable.start(0) : NaN,
+      seekEnd: full.seekable.length ? full.seekable.end(0) : NaN,
+    };
+    setText('r-fullduration',
+      `duration=${fmtSec(full.duration)}, seekable=[${fmtSec(measured.fullTimeline.seekStart)}, `
+      + `${fmtSec(measured.fullTimeline.seekEnd)}] — `
+      + (Number.isFinite(full.duration)
+        ? '有限。切り出しの Infinity は空白区間が原因の可能性がある'
+        : 'Infinity。空白の無い通し録画でも同じなので、空白区間は原因ではない'),
+      Number.isFinite(full.duration) ? '' : 'ok');
+
     const fpFullHead = await seekAndFingerprint(full, 0.5);
     const headVar = fpVariance(fpFullHead);
     measured.fullHeadVariance = headVar;
@@ -816,6 +833,11 @@ function writeSummary() {
     `- Cluster 時刻（ファイル構造）: ${m.clusters ? m.clusters.cut.detail : '-'}`,
     `- 変種（chunk[0] をヘッダのみに切り詰め）: ${m.headerOnly ? m.headerOnly.detail : '-'}`,
     `- 通し録画の Cluster: ${m.clusters ? `${m.clusters.fullCount} 個、先頭 [${m.clusters.fullHead.join(', ')}] ms` : '-'}`,
+    `- 通し録画（空白なし）の duration: ${m.fullTimeline ? fmtSec(m.fullTimeline.duration) : '-'}`
+      + `, seekable=[${m.fullTimeline ? fmtSec(m.fullTimeline.seekStart) : '-'}, ${m.fullTimeline ? fmtSec(m.fullTimeline.seekEnd) : '-'}]`,
+    m.fullTimeline && !Number.isFinite(m.fullTimeline.duration)
+      ? `  → 空白の無い通し録画でも Infinity。duration=Infinity は空白区間が原因ではない。`
+      : (m.fullTimeline ? `  → 通し録画は有限。切り出しの Infinity は空白区間が原因の可能性がある。` : ''),
     `- タイムライン方式（画面比較）: ${m.timelineDetail ? m.timelineDetail.detail : m.timeline}`,
     `- 構造と画面比較の一致: ${m.clusters && m.timeline
       ? (m.clusters.cut.verdict === m.timeline ? '一致' : `**不一致**（構造=${m.clusters.cut.verdict} / 画面=${m.timeline}）`)
