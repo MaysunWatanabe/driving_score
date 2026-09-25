@@ -1,4 +1,4 @@
-<!-- 作成: 2026-07-31 14:36:09 JST | 更新: 2026-09-18 16:43:02 JST -->
+<!-- 作成: 2026-07-31 14:36:09 JST | 更新: 2026-09-25 11:40:00 JST -->
 
 # 実装指示書 — 運転診断アプリ (driving-score)
 
@@ -39,6 +39,9 @@ Ionic 7 + Angular 15 + Capacitor 4 で構成された運転診断 SPA を、**�
 | DoD-12 | QA 仕様の全 TC が実行され、結果表（PASS/FAIL/BLOCKED）が `spec/qa/` 配下の記載と突き合わせ済み | テストレポート | [qa/*](spec/qa/) |
 | DoD-13 | `.smith` 除外・ローカル bind の gitignore 方針が適用され、生成物混入がない | `git status` クリーン | [env/repo-gitignore](spec/env/repo-gitignore.md) |
 | DoD-14 | `README` に環境構築・起動・検証（モック/BLE/GPS）の手順が一本化されている | レビュー | 本書 §9 |
+| DoD-15 | 設定画面 3-1 の「ヒヤリ前後秒数」で 5〜60 の整数秒を設定でき、不正入力（範囲外/非数値/小数/空欄）は保存されず入力欄が直前の保存値へ戻る | 実機操作 | proposal #229 / #231、fact #4633 |
+| DoD-16 | 診断中のヒヤリ検知で `hiyari.NN.webm` が 01 起点の連番で生成され、通し動画 `movie.webm` は作られない。区間が重なる連続ヒヤリは 1 本に連結され、ヒヤリ地点は 1 件ずつ別マーカーとして記録される | 実機 E2E | fact #4330、proposal #227 / #230 / #242 |
+| DoD-17 | 6-1 で各ヒヤリ動画が再生でき、マーカーから seek した先に該当時刻の映像が出る。ファイルをまたぐ前後ボタンのリング巡回で `src` が差し替わる | 実機 E2E | proposal #241 / #244 / #245 |
 
 ---
 
@@ -52,6 +55,7 @@ Ionic 7 + Angular 15 + Capacitor 4 で構成された運転診断 SPA を、**�
 - **db**: User / Score モデルとリポジトリ、CREATE TABLE の REAL 是正、シード最小方針。
 - **infra**: BLE デバイスクラス、Bluetooth LE プラグイン、Google Maps ローダ、ファイルストレージ、Cordova センサープラグイン群、アセット JSON。
 - **qa**: モックセンサログ（schema / scenarios / generator / aggregation）、BLE エミュレータ、GPS フィーダ、ドメイン別 QA、横断 QA。
+- **2026年度改修⑤（ヒヤリ録画のサイズ削減）**: 通し録画を廃止し、ヒヤリ前後 n 秒の区間のみを個別ファイルへ書き出す（M10）。
 - **成果物**: 環境構築スクリプト・起動スクリプト（§9 必須）。
 
 ### 2.2 やらないこと（明示的に対象外）
@@ -256,6 +260,38 @@ Ionic 7 + Angular 15 + Capacitor 4 で構成された運転診断 SPA を、**�
 - 成果物: テストレポート（TC ごとに PASS/FAIL/BLOCKED、実測値、logcat 抜粋）
 - 完了判定: DoD-9 / DoD-12 / DoD-14
 
+### M10: 2026年度改修⑤ — ヒヤリ録画のサイズ削減（担当: UI-agent + Middleware-agent、QA-agent 検証）
+
+- 依存: M7（ui 層）/ M8（BLE エミュ・GPS フィーダ）/ M9（既存機能の受入）
+- 変更許可: proposal #240（`scoped-lift`）により下記 6 ファイルの変更を包括許可済み。エミュレータ都合の変更禁止（fact #31 / TC-BLE-EMU-020）は維持する。
+- 対象ファイル:
+  - `src/data/src/app/driving/driving.page.ts`
+  - `src/data/src/app/bad-spot/bad-spot.page.ts` / `.html`
+  - `src/data/src/app/settings/settings.page.ts` / `.html`
+  - `src/data/src/app/services/map.service.ts`
+  - `src/data/src/app/services/login.service.ts`
+  - `src/data/src/environments/environment.ts`
+  - `src/data/tools/gen-mock-sensorlog.mjs`（`hiyari_recording` シナリオ追加）
+
+#### タスク
+
+| # | 内容 | 根拠 |
+|---|---|---|
+| 10-1 | 設定画面 3-1 の録画トグル直下に「ヒヤリ前後秒数（秒）」を追加。`ion-input type="number"`、既定 15 / 閉区間 [5,60]、検証・復帰・保存は `ionBlur`、エラー表示なし、無効化条件は `!hasAndroid \|\| settingRecording=='disable'` | fact #4633、proposal #229 / #231 |
+| 10-2 | `environment.ts` に `settingRecordingMargin: 'setting-recording-margin'`、`login.service` に `settings.recordingMargin`（`?? 15`、非 Android の強制値なし） | proposal #229 |
+| 10-3 | `startVideo()` を `start(1000)` に変更。`chunk[0]` を常時保持しつつ、直近 `n+5` 秒のリングバッファを持つ。切り詰め・区間選択は**チャンク個数ではなく受信時刻**で判定する | proposal #227 / #243 |
+| 10-4 | 区間 `[t-n, t+n]` の確定。区間が開いた時点で `hiyari.NN.webm` を作成し、閉じるまで逐次 append。重なる連続ヒヤリは終端を `t2+n` へ延長して連結。尺不足は取得範囲をそのまま保存し、診断終了時に未確定区間を確定させる。ヒヤリ 0 件なら生成しない。`movie.webm` は作らない | fact #4330、proposal #227 / #230 / #242 |
+| 10-5 | 書き出しは `chunk[0]` の **EBML ヘッダ部分のみ**（先頭から最初の Cluster ID `0x1F43B675` の手前まで）＋区間クラスタ。クラスタの Timecode は書き換えない | proposal #244 / #245 |
+| 10-6 | `markersVideoTime` は元の録画ストリーム内オフセット秒（`pushBadPoint()` / `seekVideo()` は変更しない）。`drawMarker()` に動画ファイル名引数を追加し `markersVideoPath` で保持 | proposal #241、fact #4635 撤回 |
+| 10-7 | 6-1: マーカー選択時にファイルが異なれば `src` 差し替え→`seekVideo()`。300ms 自動追尾は同一ファイル内に限定。前後ボタンは全マーカーをリング巡回。`autoplay=false` 維持 | proposal #228 §2-2 |
+| 10-8 | `onStart()` で `videoStartTimestamp` を記録し、`videoStartTimestamp - startTimestamp` のギャップをログに出す（proposal #243 で「実測後に判断」とされた項目） | proposal #243 |
+| 10-9 | モックシナリオ `hiyari_recording`（`canConnected` / `--duration 90` / 9000 行、ヒヤリ 15・30・40・45・48・60 秒）を生成し、正準を 9 シナリオ 10 ファイルへ拡張。既存 9 ファイルのバイト列は不変 | proposal #253 / #254 |
+| 10-10 | 実機 E2E（BLE エミュレータ＋モック GPS＋`settingRecordingMargin = 5`）。期待値は 5 ファイル・6 マーカー | proposal #253 §4-4 |
+
+#### 完了判定
+
+DoD-15 / DoD-16 / DoD-17。あわせて proposal #253 §4-4 の合格条件 12 項目を満たすこと。
+
 ### 依存関係ダイアグラム（テキスト）
 
 ```
@@ -264,6 +300,8 @@ M0(env) ──> M1(infra) ──┬──> M4(mw基盤) ──> M5(mwセンサ) 
             └> M2(db) ──┘                     │                                  │
             └> M3(qa mock) ───────────────────┘                                  │
                                     M8(BLEエミュ/GPSフィーダ) ────────────────────┘
+                                                                              │
+                                                    M10(2026改修⑤ ヒヤリ録画) <┘
 ```
 
 ---
