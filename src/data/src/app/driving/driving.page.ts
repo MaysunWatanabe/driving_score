@@ -239,9 +239,9 @@ export class DrivingPage implements OnInit {
           self.logService.debug('[DrivingScore][DrivingPage] loadMap: videoRecordedPath='+self.videoRecordedPath);
           // ヒヤリ地点を選択したらページ遷移
           self.mapService.setSelectMarkerPos(pos);
-          let recordedPath = self.videoRecordedPath ?? '';
-          recordedPath = recordedPath.split('/').join('@');
-          self.navCtrl.navigateForward('/bad-spot/' + recordedPath);
+          // 動画パスはマーカーが持つ（proposal #257）。ルートパラメータは
+          // 使わないが、ルート定義 /bad-spot/:path は互換のため残す
+          self.navCtrl.navigateForward('/bad-spot/-');
         } catch (error: any) {
           self.logService.error('[DrivingScore][DrivingPage] loadMap', error);
         }
@@ -704,7 +704,10 @@ export class DrivingPage implements OnInit {
         msg3: msg3,
         msg4: msg4
       },
-      videoPath
+      // マーカーにはフルパスを持たせる（proposal #257）。
+      // 1-2（前回結果表示）はマーカーごとに走行ディレクトリが異なるため、
+      // ディレクトリを画面単位で 1 つ持つ方式では表現できない。
+      videoPath == '' ? '' : (this.saveDirectoryPath + videoPath)
     );
     this.logService.debug('[DrivingScore][DrivingPage] pushBadPoint: add bad point');
   }
