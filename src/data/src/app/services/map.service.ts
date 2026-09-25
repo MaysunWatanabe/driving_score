@@ -19,6 +19,10 @@ export class MapService {
   private markersTimestamp = Array();
   private markersComments = Array();
   private markersVideoTime = Array();
+  // 各ヒヤリマーカーが属するヒヤリ動画のファイル名（fact #4682）。
+  // markers / markersTimestamp / markersComments / markersVideoTime と
+  // 同じ index が同じマーカーを指す並列配列として扱う。
+  private markersVideoPath = Array();
 
   private circleMarkers = Array();
 
@@ -204,6 +208,7 @@ export class MapService {
     this.markersTimestamp.splice(0);
     this.markersComments.splice(0);
     this.markersVideoTime.splice(0);
+    this.markersVideoPath.splice(0);
 
     for (const marker of this.circleMarkers) {
       marker.setMap(null);
@@ -220,7 +225,7 @@ export class MapService {
     }
   }
 
-  drawMarker(uluru: any, title: string, videoTime: number, comments:{}) {
+  drawMarker(uluru: any, title: string, videoTime: number, comments:{}, videoPath: string = '') {
     const image = {
       url: "assets/images/hiyari.png",
       size: new google.maps.Size(40, 40),
@@ -249,6 +254,7 @@ export class MapService {
     this.markersTimestamp.push(title);
     this.markersComments.push(comments);
     this.markersVideoTime.push(videoTime);
+    this.markersVideoPath.push(videoPath);
   }
 
   getMarkerPosition(pos: number) {
@@ -257,6 +263,10 @@ export class MapService {
 
   getMarkerTimestamp(pos: number) {
     return this.markersTimestamp[pos];
+  }
+
+  getMarkerVideoPath(pos: number) {
+    return this.markersVideoPath[pos];
   }
 
   getMarkerVideoTime(pos: number) {

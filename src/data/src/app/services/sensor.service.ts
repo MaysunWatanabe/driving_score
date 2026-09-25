@@ -170,6 +170,17 @@ export class SensorService {
   }
 
   /**
+   * 運転診断開始時刻（startScoreLogic() で設定）
+   *
+   * 録画開始時刻との差（ギャップ）を実測するために公開する。
+   * videoTime の原点はこの時刻であり、mediaRecorder.start() の時刻とは
+   * onStart() 内の処理ぶんずれる（fact #4707）。
+   */
+  public getStartTimestamp(): number {
+    return this.startTimestamp;
+  }
+
+  /**
    * 過去に取得できた一番新しい位置情報を取得
    */
   public async getLastLatLng(): Promise<any> {

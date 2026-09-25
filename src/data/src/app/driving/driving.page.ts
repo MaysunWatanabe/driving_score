@@ -68,7 +68,31 @@ export class DrivingPage implements OnInit {
 
   private mediaRecorder: MediaRecorder;
   private videoRecordedPath: string;
-  private videoChunks: Array<Blob> = [];
+
+  //////// ヒヤリ録画（2026年度改修⑤）
+  // fact #4679 / #4703 / #4706 / #4708 / #4709、proposal #227 / #230 / #242 / #244 / #245 / #256
+  //
+  // 通し録画は作らない。録画は診断中ずっと回し、1 秒ごとに届くチャンクを
+  // メモリ上のリングバッファに積む。ヒヤリを検知したら、その前後 n 秒を
+  // hiyari.NN.webm として切り出す。
+  //
+  // 時刻はすべて「録画開始からの経過 ms」で扱う（proposal #256 = video-clock）。
+  // センサー時計（startScoreLogic 原点）とは原点が異なる点に注意。
+
+  /** 録画開始時刻。mediaRecorder.start() の直前に Date.now() を入れる */
+  private videoStartTimestamp: number = 0;
+  /** chunk[0]。EBML ヘッダを含むため常時保持し、切り詰めの対象外とする */
+  private videoHeadChunk: Blob | null = null;
+  /** リングバッファ。直近 n+5 秒ぶんだけ持つ */
+  private videoChunks: Array<{ blob: Blob, receivedAt: number, prevReceivedAt: number }> = [];
+  /** 診断開始時に 1 回読む前後秒数（fact #4684）。走行中は固定 */
+  private recordingMarginSec: number = 15;
+  /** 書き出し中のヒヤリ動画。null なら区間は開いていない */
+  private hiyariFileName: string | null = null;
+  /** 現区間の終端（録画開始からの ms）。連結のたびに延長する */
+  private hiyariSegmentEnd: number = 0;
+  /** hiyari.NN.webm の NN。診断ごとに 1 から */
+  private hiyariFileSeq: number = 0;
 
   private autoScrollLock: boolean = false;
 
@@ -257,6 +281,10 @@ export class DrivingPage implements OnInit {
       }
     });
 
+    // ヒヤリ前後秒数は診断開始時に 1 回だけ読む。走行中に設定を変えても
+    // この走行には反映しない（fact #4684）
+    this.recordingMarginSec = this.loginService.settings.recordingMargin ?? 15;
+
     // ビデオ撮影開始
     this.startVideo();
   }
@@ -378,8 +406,23 @@ export class DrivingPage implements OnInit {
       if (this.mediaRecorder != null && this.mediaRecorder.state == 'inactive') {
         this.logService.debug('[DrivingScore][DrivingPage] startVideo');
         this.recording = true;
+
+        // 診断ごとに録画状態をリセットする
+        this.videoHeadChunk = null;
         this.videoChunks.splice(0);
-        this.mediaRecorder.start(60000); //60秒ごとにdataavailableを発火
+        this.hiyariFileName = null;
+        this.hiyariSegmentEnd = 0;
+        this.hiyariFileSeq = 0;
+
+        // 録画時計の原点。start() の直前に取る（proposal #256 §3-1）
+        this.videoStartTimestamp = Date.now();
+
+        // センサー時計（startScoreLogic 原点）とのギャップを実測して残す。
+        // 補正の要否は実測後に判断する（fact #4707）。
+        const gap = this.videoStartTimestamp - this.sensorService.getStartTimestamp();
+        this.logService.debug('[DrivingScore][DrivingPage] startVideo. videoStartOffset=' + gap + 'ms');
+
+        this.mediaRecorder.start(1000); //1秒ごとにdataavailableを発火（fact #4679）
       }
     } catch (error: any) {
       this.logService.error('[DrivingScore][DrivingPage] startVideo', error);
@@ -402,31 +445,143 @@ export class DrivingPage implements OnInit {
     }
   }
 
+  /**
+   * chunk[0] から EBML ヘッダ部分だけを取り出す（fact #4708）
+   *
+   * WebM は EBML ヘッダ → Segment(Info / Tracks) → Cluster... の順に並ぶので、
+   * 最初の Cluster ID (0x1F43B675) の手前で切れば再生に必要な定義部が得られる。
+   * chunk[0] は実測で 99.2〜99.93% が映像（録画開始直後の無関係な絵）なので、
+   * 丸ごと付けると全ヒヤリ動画の冒頭にそれが入ってしまう。
+   */
+  private async extractWebmHeader(chunk0: Blob): Promise<Blob> {
+    const buf = new Uint8Array(await chunk0.arrayBuffer());
+    for (let i = 0; i + 4 < buf.length; i++) {
+      if (buf[i] == 0x1f && buf[i + 1] == 0x43 && buf[i + 2] == 0xb6 && buf[i + 3] == 0x75) {
+        return chunk0.slice(0, i);
+      }
+    }
+    // Cluster が見つからない場合は丸ごと使う（再生できないよりはまし）
+    this.logService.error('[DrivingScore][DrivingPage] extractWebmHeader: Cluster ID not found', null);
+    return chunk0;
+  }
+
+  /**
+   * ヒヤリ検知時に区間を開く、または既存区間を延長する（fact #4703 / #4706）
+   *
+   * 連結の判定は厳密不等号。t2 == t_end のときは連結せず別ファイルにする。
+   * このとき新区間 [t2-n, t2+n] は前区間の末尾と最大 n 秒重複するが、
+   * 構造的に避けられないため許容する（fact #4723）。
+   *
+   * @returns 当該ヒヤリが属するファイル名
+   */
+  private async openOrExtendHiyariSegment(): Promise<string> {
+    const n = this.recordingMarginSec * 1000;
+    const t = Date.now() - this.videoStartTimestamp;
+
+    if (this.hiyariFileName != null && t < this.hiyariSegmentEnd) {
+      // 連結。終端だけ延ばす
+      this.hiyariSegmentEnd = t + n;
+      this.logService.debug('[DrivingScore][DrivingPage] hiyari extend. file='
+        + this.hiyariFileName + ' end=' + this.hiyariSegmentEnd);
+      return this.hiyariFileName;
+    }
+
+    // 開いている区間があれば先に閉じる
+    if (this.hiyariFileName != null) {
+      this.closeHiyariSegment();
+    }
+
+    this.hiyariFileSeq++;
+    const name = 'hiyari.' + ('0' + this.hiyariFileSeq).slice(-2) + '.webm';
+    this.hiyariFileName = name;
+    this.hiyariSegmentEnd = t + n;
+
+    // ヘッダ + 区間先頭からのクラスタを書き出す。
+    // 受信時刻はチャンクの終端側なので、区間 [t-n, t+n] と少しでも重なる
+    // チャンクをすべて含める（proposal #256 §2）。そうしないと区間の
+    // 冒頭を含むチャンクを取りこぼし、最大 1 秒欠ける。
+    const from = t - n;
+    const parts: Array<Blob> = [];
+    if (this.videoHeadChunk != null) {
+      parts.push(await this.extractWebmHeader(this.videoHeadChunk));
+    }
+    for (const c of this.videoChunks) {
+      if (c.receivedAt > from) {
+        parts.push(c.blob);
+      }
+    }
+
+    const head = new Blob(parts, { 'type': 'video/webm' });
+    await this.file.writeFile(this.saveDirectoryPath, name, head);
+    this.logService.debug('[DrivingScore][DrivingPage] hiyari open. file=' + name
+      + ' from=' + from + ' end=' + this.hiyariSegmentEnd + ' chunks=' + (parts.length - 1));
+
+    return name;
+  }
+
+  /** 区間を閉じる。NN は次のヒヤリで繰り上がる */
+  private closeHiyariSegment() {
+    if (this.hiyariFileName == null) {
+      return;
+    }
+    this.logService.debug('[DrivingScore][DrivingPage] hiyari close. file=' + this.hiyariFileName);
+    this.hiyariFileName = null;
+    this.hiyariSegmentEnd = 0;
+  }
+
+  /**
+   * dataavailable の受け口（fact #4679 / #4699 / #4703）
+   *
+   * 通し動画 movie.webm は作らない。チャンクを受信時刻つきでリングバッファに
+   * 積み、直近 n+5 秒だけ残す。区間が開いていればそのファイルへ append する。
+   */
   async saveVideo(event: any) {
     if (this.hasAndroid == false) {
       return;
     }
     try {
-      this.videoChunks.push(event.data);
+      const now = Date.now() - this.videoStartTimestamp;
+      const prev = this.videoChunks.length > 0
+        ? this.videoChunks[this.videoChunks.length - 1].receivedAt
+        : 0;
 
-      this.logService.debug('[DrivingScore][DrivingPage] saveVideo. movie.webm append');
-      if (this.videoChunks.length == 1) {
-        this.file.writeFile(this.saveDirectoryPath, 'movie.webm', event.data);
-      } else {
-        this.file.writeFile(this.saveDirectoryPath, 'movie.webm', event.data, { append: true });
+      if (this.videoHeadChunk == null) {
+        // 先頭チャンク。EBML ヘッダを含むので捨てずに別枠で保持する
+        this.videoHeadChunk = event.data;
+      }
+      this.videoChunks.push({ blob: event.data, receivedAt: now, prevReceivedAt: prev });
+
+      // 区間が開いていれば、届いたチャンクをそのまま追記する
+      if (this.hiyariFileName != null) {
+        await this.file.writeFile(this.saveDirectoryPath, this.hiyariFileName,
+          event.data, { append: true });
+
+        // 終端を超えたら閉じる（proposal #256 §3-3）
+        if (this.hiyariSegmentEnd < now) {
+          this.closeHiyariSegment();
+        }
+      }
+
+      // 直近 n+5 秒より古いものを捨てる。区間が開いているかに関わらず常に行う。
+      // 区間内のチャンクは既にファイルへ書かれているのでメモリに残す必要がない。
+      const keepFrom = now - (this.recordingMarginSec + 5) * 1000;
+      while (this.videoChunks.length > 0 && this.videoChunks[0].receivedAt < keepFrom) {
+        this.videoChunks.shift();
       }
 
       if (this.mediaRecorder.state == 'inactive') {
-        const webm = new Blob(this.videoChunks, { 'type' : 'video/webm' });
-        this.videoRecordedPath = URL.createObjectURL(webm);
+        // 診断終了。未確定の区間はこの時点までで確定させる（fact #4680）
+        this.closeHiyariSegment();
         this.videoChunks.splice(0);
-        this.logService.debug('[DrivingScore][DrivingPage] saveVideo finish. videoRecordedPath=' + this.videoRecordedPath);
+        this.videoHeadChunk = null;
+        this.logService.debug('[DrivingScore][DrivingPage] saveVideo finish. files=' + this.hiyariFileSeq);
       }
 
     } catch (error) {
       this.logService.error('[DrivingScore][DrivingPage] saveFile failed.', error);
     }
   }
+
 
   updateSensor(sensorData: any, updateMap: boolean) {
     try {
@@ -481,16 +636,36 @@ export class DrivingPage implements OnInit {
     this.score4Text = this.getRank(this.score4);
 
     if (score.initialize && score.hiyari) {
-      // ヒヤリ地点だったらマークを登録
-      this.pushBadPoint(score);
+      // ヒヤリ地点だったらマークを登録。
+      // 区間を先に開いてからマーカーを打つ（マーカーに動画ファイル名を持たせるため）
+      this.onHiyariDetected(score);
     }
+  }
+
+  /**
+   * ヒヤリ検知時の処理（proposal #256 §4）
+   *
+   * 録画が有効なら先に区間を開き、そのファイル名をマーカーに持たせる。
+   * 録画が無効・非 Android のときはファイル名を持たないマーカーになる。
+   */
+  private async onHiyariDetected(score: Score) {
+    let fileName: string = '';
+    if (this.hasAndroid && this.loginService.settings.recording && this.mediaRecorder != null
+      && this.mediaRecorder.state != 'inactive') {
+      try {
+        fileName = await this.openOrExtendHiyariSegment();
+      } catch (error) {
+        this.logService.error('[DrivingScore][DrivingPage] openOrExtendHiyariSegment failed.', error);
+      }
+    }
+    this.pushBadPoint(score, fileName);
   }
 
   /**
    * ヒヤリ地点を地図に描画
    * @param {Score} 運転診断ロジックの実行結果
    */
-  pushBadPoint(score: Score) {
+  pushBadPoint(score: Score, videoPath: string = '') {
     const latLng = this.lastLatLng;
     const time = this.dateFormat(new Date());
     const videoTime = Math.floor(this.sensorService.getLastSensorTime() / 1000);
@@ -528,7 +703,8 @@ export class DrivingPage implements OnInit {
         msg2: msg2,
         msg3: msg3,
         msg4: msg4
-      }
+      },
+      videoPath
     );
     this.logService.debug('[DrivingScore][DrivingPage] pushBadPoint: add bad point');
   }
