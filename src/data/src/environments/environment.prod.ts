@@ -14,6 +14,7 @@ export const environment = {
   loginKey: 'login',
   lastLoginUserId: 'last-login-user-id',
   settingRecording: 'setting-recording',
+  settingRecordingMargin: 'setting-recording-margin',
   settingGpsDemo: 'setting-gps-demo',
   settingLogStorage: 'setting-log-storage',
   settingSensorLogStorage: 'setting-sensor-log-storage',

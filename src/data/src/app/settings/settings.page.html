@@ -40,6 +40,14 @@
     </ion-item>
     <ion-item>
       <div class="button_area">
+        ヒヤリ前後秒数（秒）<br/>
+        <ion-input type="number" inputmode="numeric" min="5" max="60" step="1"
+          [value]="settingRecordingMargin" (ionBlur)="onSettingRecordingMargin($event)"
+          [disabled]="!hasAndroid || settingRecording=='disable'"></ion-input>
+      </div>
+    </ion-item>
+    <ion-item>
+      <div class="button_area">
         アプリログを端末に保存<br/>
         <ion-segment value="{{settingLogStorage}}" (ionChange)="onSettingLogStorage($event)" [disabled]="!hasAndroid">
           <ion-segment-button value="enable">
