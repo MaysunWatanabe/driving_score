@@ -97,8 +97,17 @@ export class SettingsPage implements OnInit {
     const value = (raw === '' || raw === null || raw === undefined) ? NaN : Number(raw);
 
     if (!Number.isInteger(value) || value < 5 || 60 < value) {
-      // 保存せず、表示を直前の保存値へ戻す
-      this.settingRecordingMargin = this.loginService.settings.recordingMargin ?? 15;
+      // 保存せず、表示を直前の保存値へ戻す。
+      //
+      // [value] は片方向バインディングなので、フィールドへ代入するだけでは
+      // DOM は書き換わらない。不正入力のときは「戻し先 == 現在のフィールド値」
+      // になることが多く（例: 保存値 5 のまま 99 を入力）、Angular からは
+      // 変化なしに見えて入力欄が 99 のまま残る。要素へ直接書き戻す。
+      const restored = this.loginService.settings.recordingMargin ?? 15;
+      this.settingRecordingMargin = restored;
+      if (e?.target != null) {
+        e.target.value = restored;
+      }
       return;
     }
 
