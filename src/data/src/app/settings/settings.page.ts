@@ -79,6 +79,10 @@ export class SettingsPage implements OnInit {
 
   async onSettingRecording(e: any) {
     this.loginService.settings.recording = (e.detail.value == 'enable');
+    // 「ヒヤリ前後秒数」の無効化条件が settingRecording を見ているため
+    // （fact #4687）、表示用フィールドも同時に更新する。これが無いと録画を
+    // 有効に戻しても入力欄が無効のままになる。
+    this.settingRecording = e.detail.value;
     await this.storage.set(environment.settingRecording, this.loginService.settings.recording);
   }
 
