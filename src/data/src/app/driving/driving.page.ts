@@ -70,8 +70,14 @@ export class DrivingPage implements OnInit {
   private videoRecordedPath: string;
 
   //////// ヒヤリ録画（2026年度改修⑤）
-  // fact #4679 / #4703 / #4706 / #4708
-  // proposal #227 / #230 / #242 / #244 / #245 / #256 / #262 / #263 / #266
+  // fact #4679 / #4703 / #4708
+  // proposal #227 / #230 / #242 / #244 / #245 / #256 / #262 / #263 / #266 / #272
+  //
+  // proposal #272 で連結（extend-concat）をやめ、1 ヒヤリ＝1 ファイルにした。
+  // fact #4706 の連結部分と fact #4740 / #4748 を撤回している。区間が重なる
+  // 連続ヒヤリでは複数の区間を同時に開き、届いたチャンクを全区間へ書く。
+  // 重複した映像は多重保存されるが、どのファイルも [t-n, t+n] を満たすことを
+  // 優先する（マーカーの再生位置は常に 0 秒＝発生の n 秒前）。
   //
   // proposal #262 で fact #4709（Timecode を書き換えない）と fact #4705 /
   // #4742 の一部（markersVideoTime はストリーム基準）を撤回した。
@@ -100,23 +106,29 @@ export class DrivingPage implements OnInit {
   private videoChunks: Array<{ blob: Blob, receivedAt: number, prevReceivedAt: number }> = [];
   /** 診断開始時に 1 回読む前後秒数（fact #4684）。走行中は固定 */
   private recordingMarginSec: number = 15;
-  /** 書き出し中のヒヤリ動画。null なら区間は開いていない */
-  private hiyariFileName: string | null = null;
-  /** 現区間の終端（録画開始からの ms）。連結のたびに延長する */
-  private hiyariSegmentEnd: number = 0;
   /**
-   * 現区間の開始時刻（録画開始からの ms）。連結しても動かさない。
-   * markersVideoTime をファイル先頭起点で出すための基準（proposal #262）
+   * 開いているヒヤリ区間（proposal #272）
+   *
+   * 連結はしない。ヒヤリごとに必ず新しいファイルを開くため、区間が重なる間は
+   * 複数の区間が同時に開く（n=5 の hiyari_recording で最大 3 本）。
+   * 届いたチャンクは開いている全区間へ書く。
+   *
+   * t0 と繰り越しは区間ごとに異なるので、区間の中に持つ（proposal #266）。
    */
-  private hiyariSegmentFrom: number = 0;
+  private hiyariSegments: Array<{
+    /** ファイル名 hiyari.NN.webm */
+    name: string,
+    /** 区間の終端（録画開始からの ms）。t+n で固定。延長はしない */
+    end: number,
+    /** 区間の開始（録画開始からの ms）。t-n */
+    from: number,
+    /** Cluster Timecode の振り直し基準。null なら未確定 */
+    timecodeBase: number | null,
+    /** 次のチャンクへ繰り越すバイト列 */
+    pendingTail: Uint8Array | null
+  }> = [];
   /** hiyari.NN.webm の NN。診断ごとに 1 から */
   private hiyariFileSeq: number = 0;
-  /**
-   * 当該ヒヤリのマーカーに載せる videoTime（秒、ファイル先頭起点 / proposal #262）
-   * 区間を開いた（延長した）その瞬間に確定させる。後続の await で時刻がずれても
-   * マーカーの値は動かさない。
-   */
-  private hiyariMarkerVideoTime: number = 0;
   /**
    * 区間ファイルへの書き込みを直列化するキュー（proposal #263）
    *
@@ -127,16 +139,6 @@ export class DrivingPage implements OnInit {
   private hiyariWriteQueue: Promise<void> = Promise.resolve();
   /** 書き込みの通し番号。順序検証ログ用（proposal #263） */
   private hiyariWriteSeq: number = 0;
-  /**
-   * 現区間の Cluster Timecode 振り直し基準 t0（proposal #266）
-   * 区間で最初に見つかった Cluster の値。null なら未確定
-   */
-  private hiyariTimecodeBase: number | null = null;
-  /**
-   * 次のチャンクへ繰り越すバイト列（proposal #266）
-   * Cluster ヘッダがチャンク境界で分断されるのを防ぐため、末尾を保留する
-   */
-  private hiyariPendingTail: Uint8Array | null = null;
 
   private autoScrollLock: boolean = false;
 
@@ -454,15 +456,10 @@ export class DrivingPage implements OnInit {
         // 診断ごとに録画状態をリセットする
         this.videoHeadChunk = null;
         this.videoChunks.splice(0);
-        this.hiyariFileName = null;
-        this.hiyariSegmentEnd = 0;
-        this.hiyariSegmentFrom = 0;
+        this.hiyariSegments.splice(0);
         this.hiyariFileSeq = 0;
-        this.hiyariMarkerVideoTime = 0;
         this.hiyariWriteQueue = Promise.resolve();
         this.hiyariWriteSeq = 0;
-        this.hiyariTimecodeBase = null;
-        this.hiyariPendingTail = null;
 
         // 録画時計の原点。start() の直前に取る（proposal #256 §3-1）
         this.videoStartTimestamp = Date.now();
@@ -628,14 +625,19 @@ export class DrivingPage implements OnInit {
   }
 
   /**
-   * Cluster Timecode をファイル先頭起点へ振り直す（proposal #262 / #266）
+   * Cluster Timecode をファイル先頭起点へ振り直す（proposal #262 / #266 / #272）
    *
    * 区間で最初に見つかった Cluster の値を t0 とし、以降は (元値 - t0) で
    * 上書きする。バイト長は変えない。桁が縮んでも元の長さのままゼロ詰めする。
    * limit より後ろに掛かる Cluster は、まだ全体が揃っていない可能性があるので
    * 触らない（繰り越して次回処理する）。
+   *
+   * t0 は区間ごとに異なる（proposal #272）。同じチャンクでも、開いている区間の
+   * 数だけ別々に振り直して書く。そのため buf は区間ごとに複製したものを渡す。
    */
-  private rebaseClusterTimecodes(buf: Uint8Array, limit: number) {
+  private rebaseClusterTimecodes(
+    segment: { timecodeBase: number | null }, buf: Uint8Array, limit: number) {
+
     for (const c of this.findClusters(buf)) {
       if (limit < c.timecodeAt + c.timecodeSize) {
         continue;
@@ -644,10 +646,10 @@ export class DrivingPage implements OnInit {
       for (let k = 0; k < c.timecodeSize; k++) {
         value = value * 256 + buf[c.timecodeAt + k];
       }
-      if (this.hiyariTimecodeBase == null) {
-        this.hiyariTimecodeBase = value;
+      if (segment.timecodeBase == null) {
+        segment.timecodeBase = value;
       }
-      let rest = Math.max(0, value - this.hiyariTimecodeBase);
+      let rest = Math.max(0, value - segment.timecodeBase);
       for (let k = c.timecodeSize - 1; 0 <= k; k--) {
         buf[c.timecodeAt + k] = rest % 256;
         rest = Math.floor(rest / 256);
@@ -656,19 +658,23 @@ export class DrivingPage implements OnInit {
   }
 
   /**
-   * 区間ファイルへ 1 回ぶん書き込む（proposal #266）
+   * 区間ファイルへ 1 回ぶん書き込む（proposal #266 / #272）
    *
    * 前回の繰り越しを先頭に付けてから Cluster Timecode を振り直し、
    * 末尾を次へ繰り越して残りを書く。書き込みは追記のみで、ファイル全体の
    * 読み戻しや書き直しはしない。Android の File プラグインは位置 0 への
    * 書き込みでファイルを切り詰めるため、途中を差し替える手段が無い
    * （LocalFilesystem.writeToFileAtURL）。
+   *
+   * buf は呼び出し側が区間ごとに複製して渡す。振り直しで書き換えるため、
+   * 同じ配列を複数区間で使い回してはいけない。
    */
-  private async writeHiyariChunk(name: string, blob: Blob, isFirst: boolean) {
-    const incoming = new Uint8Array(await blob.arrayBuffer());
+  private async writeHiyariChunk(
+    segment: { name: string, timecodeBase: number | null, pendingTail: Uint8Array | null },
+    incoming: Uint8Array, isFirst: boolean) {
 
     let buf = incoming;
-    const carried = this.hiyariPendingTail;
+    const carried = segment.pendingTail;
     if (carried != null && 0 < carried.length) {
       buf = new Uint8Array(carried.length + incoming.length);
       buf.set(carried, 0);
@@ -676,82 +682,71 @@ export class DrivingPage implements OnInit {
     }
 
     const carryStart = this.findCarryStart(buf);
-    this.rebaseClusterTimecodes(buf, carryStart);
-    this.hiyariPendingTail = buf.slice(carryStart);
+    this.rebaseClusterTimecodes(segment, buf, carryStart);
+    segment.pendingTail = buf.slice(carryStart);
 
     if (carryStart == 0) {
       // 全部が繰り越しに入った。書くものが無い
       return;
     }
-    await this.file.writeFile(this.saveDirectoryPath, name,
+    await this.file.writeFile(this.saveDirectoryPath, segment.name,
       new Blob([buf.subarray(0, carryStart)], { 'type': 'video/webm' }),
       isFirst ? {} : { append: true });
   }
 
-  /** 繰り越し分を書き出して区間を閉じる（proposal #266） */
-  private async flushHiyariTail(name: string) {
-    const tail = this.hiyariPendingTail;
-    this.hiyariPendingTail = null;
+  /** 繰り越し分を書き出して区間を閉じる（proposal #266 / #272） */
+  private async flushHiyariTail(
+    segment: { name: string, timecodeBase: number | null, pendingTail: Uint8Array | null }) {
+
+    const tail = segment.pendingTail;
+    segment.pendingTail = null;
 
     if (tail != null && 0 < tail.length) {
-      this.rebaseClusterTimecodes(tail, tail.length);
-      await this.file.writeFile(this.saveDirectoryPath, name,
+      this.rebaseClusterTimecodes(segment, tail, tail.length);
+      await this.file.writeFile(this.saveDirectoryPath, segment.name,
         new Blob([tail], { 'type': 'video/webm' }), { append: true });
     }
-    this.logService.debug('[DrivingScore][DrivingPage] hiyari flush. file=' + name
-      + ' tail=' + (tail == null ? 0 : tail.length) + 'B base=' + this.hiyariTimecodeBase + 'ms');
-    this.hiyariTimecodeBase = null;
+    this.logService.debug('[DrivingScore][DrivingPage] hiyari flush. file=' + segment.name
+      + ' tail=' + (tail == null ? 0 : tail.length) + 'B base=' + segment.timecodeBase + 'ms');
   }
 
   /**
-   * ヒヤリ検知時に区間を開く、または既存区間を延長する（fact #4703 / #4706）
+   * ヒヤリ検知時に区間を開く（proposal #272）
    *
-   * 連結の判定は厳密不等号。t2 == t_end のときは連結せず別ファイルにする。
-   * このとき新区間 [t2-n, t2+n] は前区間の末尾と最大 n 秒重複するが、
-   * 構造的に避けられないため許容する（fact #4723）。
+   * 連結はしない。ヒヤリごとに必ず新しいファイルを開く。区間 [t-n, t+n] が
+   * 前の区間と重なる場合は、両方を同時に開いたままにする。届いたチャンクは
+   * saveVideo() が開いている全区間へ書く。
+   *
+   * 重なった映像は複数ファイルへ多重保存されるが、これは仕様として許容する
+   * （proposal #272。容量より「どのファイルも発生の前後 n 秒を持つこと」を採る）。
    *
    * @returns 当該ヒヤリが属するファイル名
    */
-  private async openOrExtendHiyariSegment(): Promise<string> {
+  private async openHiyariSegment(): Promise<string> {
     const n = this.recordingMarginSec * 1000;
     const t = Date.now() - this.videoStartTimestamp;
 
-    if (this.hiyariFileName != null && t < this.hiyariSegmentEnd) {
-      // 連結。終端だけ延ばす
-      this.hiyariSegmentEnd = t + n;
-      // 2 個目以降のマーカーは n+Δ 秒になる（proposal #262）
-      this.hiyariMarkerVideoTime = Math.max(0,
-        Math.floor((t - this.hiyariSegmentFrom) / 1000));
-      this.logService.debug('[DrivingScore][DrivingPage] hiyari extend. file='
-        + this.hiyariFileName + ' end=' + this.hiyariSegmentEnd);
-      return this.hiyariFileName;
-    }
-
-    // 開いている区間があれば先に閉じる
-    if (this.hiyariFileName != null) {
-      await this.closeHiyariSegment();
-    }
-
     this.hiyariFileSeq++;
     const name = 'hiyari.' + ('0' + this.hiyariFileSeq).slice(-2) + '.webm';
-    this.hiyariFileName = name;
-    this.hiyariSegmentEnd = t + n;
+    const from = t - n;
+
+    const segment = {
+      name: name,
+      end: t + n,
+      from: from,
+      timecodeBase: null as number | null,
+      pendingTail: null as Uint8Array | null
+    };
+    this.hiyariSegments.push(segment);
 
     // ヘッダ + 区間先頭からのクラスタを書き出す。
     // 受信時刻はチャンクの終端側なので、区間 [t-n, t+n] と少しでも重なる
-    // チャンクをすべて含める（proposal #256 §2）。そうしないと区間の
-    // 冒頭を含むチャンクを取りこぼし、最大 1 秒欠ける。
-    const from = t - n;
-    // markersVideoTime の基準（proposal #262）。連結しても動かさない
-    this.hiyariSegmentFrom = from;
-    // 区間の 1 個目のマーカーは n 秒になる
-    this.hiyariMarkerVideoTime = Math.max(0, Math.floor((t - from) / 1000));
-
+    // チャンクをすべて含める（fact #4703）。そうしないと区間の冒頭を含む
+    // チャンクを取りこぼし、最大 1 秒欠ける。
+    //
     // ここから enqueue までの間に await を挟まないこと（proposal #263）。
     // 挟むと、その隙に saveVideo の append がキューへ先に積まれ、
     // ヘッダを書く前に本文が書かれて先頭が壊れる。
-    // 対象チャンクは同期的にスナップショットし、以降に届いたチャンクは
-    // append 経由でのみ書く（open 側に重複させない）。
     const headChunk = this.videoHeadChunk;
     const bodies: Array<Blob> = [];
     for (const c of this.videoChunks) {
@@ -761,7 +756,8 @@ export class DrivingPage implements OnInit {
     }
 
     this.logService.debug('[DrivingScore][DrivingPage] hiyari open. file=' + name
-      + ' from=' + from + ' end=' + this.hiyariSegmentEnd + ' chunks=' + bodies.length);
+      + ' from=' + from + ' end=' + segment.end + ' chunks=' + bodies.length
+      + ' openCount=' + this.hiyariSegments.length);
 
     await this.enqueueHiyariWrite('open', name, async () => {
       const parts: Array<Blob> = [];
@@ -772,33 +768,33 @@ export class DrivingPage implements OnInit {
       for (const body of bodies) {
         parts.push(body);
       }
+      const buf = new Uint8Array(
+        await new Blob(parts, { 'type': 'video/webm' }).arrayBuffer());
       // 区間の最初の書き込み。ここで t0 が確定する（proposal #266）
-      await this.writeHiyariChunk(name, new Blob(parts, { 'type': 'video/webm' }), true);
+      await this.writeHiyariChunk(segment, buf, true);
     });
 
     return name;
   }
 
   /**
-   * 区間を閉じる。NN は次のヒヤリで繰り上がる
+   * 区間を閉じる（proposal #272）
    *
-   * 閉じた直後に Cluster Timecode の振り直しと Duration の書き込みを行う
-   * （proposal #262）。整形に失敗しても録画は続けたいので、例外は握りつぶして
-   * ログだけ残す。整形前のファイルでも再生自体はできる。
+   * 一覧から外してから繰り越し分を書き出す。外すのを同期的に行うことで、
+   * これ以降この区間への append が積まれないようにする（proposal #263）。
    */
-  private async closeHiyariSegment() {
-    if (this.hiyariFileName == null) {
+  private async closeHiyariSegment(
+    segment: { name: string, timecodeBase: number | null, pendingTail: Uint8Array | null }) {
+
+    const index = this.hiyariSegments.indexOf(segment as any);
+    if (index < 0) {
       return;
     }
-    const name = this.hiyariFileName;
-    // null 化はここで同期的に行う。これ以降このファイルへの append は
-    // 積まれないので、finalize が最後の書き込みになる（proposal #263）
-    this.hiyariFileName = null;
-    this.hiyariSegmentEnd = 0;
-    this.hiyariSegmentFrom = 0;
-    this.logService.debug('[DrivingScore][DrivingPage] hiyari close. file=' + name);
+    this.hiyariSegments.splice(index, 1);
+    this.logService.debug('[DrivingScore][DrivingPage] hiyari close. file=' + segment.name
+      + ' openCount=' + this.hiyariSegments.length);
 
-    await this.enqueueHiyariWrite('flush', name, () => this.flushHiyariTail(name));
+    await this.enqueueHiyariWrite('flush', segment.name, () => this.flushHiyariTail(segment));
   }
 
   /**
@@ -823,18 +819,24 @@ export class DrivingPage implements OnInit {
       }
       this.videoChunks.push({ blob: event.data, receivedAt: now, prevReceivedAt: prev });
 
-      // 区間が開いていれば、届いたチャンクをそのまま追記する。
-      // 対象ファイル名は同期的に取り出し、タスク内で this.hiyariFileName を
-      // 再参照しない。区間が切り替わった後に別ファイルへ書くのを防ぐ
-      // （proposal #263）
-      const target = this.hiyariFileName;
-      if (target != null) {
-        await this.enqueueHiyariWrite('append', target, () =>
-          this.writeHiyariChunk(target, event.data, false));
+      // 開いている全区間へ追記する（proposal #272）。
+      // 対象は同期的にスナップショットし、タスク内で this.hiyariSegments を
+      // 再参照しない。区間が閉じた後に書き込まれるのを防ぐ（proposal #263）
+      const targets = this.hiyariSegments.slice();
+      if (0 < targets.length) {
+        // Blob → Uint8Array の変換は 1 回だけ行い、区間ごとに複製して渡す。
+        // 振り直しで中身を書き換えるため、同じ配列は使い回せない
+        const source = new Uint8Array(await event.data.arrayBuffer());
+        for (const segment of targets) {
+          await this.enqueueHiyariWrite('append', segment.name, () =>
+            this.writeHiyariChunk(segment, new Uint8Array(source), false));
+        }
 
-        // 終端を超えたら閉じる（proposal #256 §3-3）
-        if (this.hiyariSegmentEnd < now) {
-          await this.closeHiyariSegment();
+        // 終端を超えた区間を閉じる（proposal #256 §3-3）
+        for (const segment of targets) {
+          if (segment.end < now) {
+            await this.closeHiyariSegment(segment);
+          }
         }
       }
 
@@ -847,7 +849,9 @@ export class DrivingPage implements OnInit {
 
       if (this.mediaRecorder.state == 'inactive') {
         // 診断終了。未確定の区間はこの時点までで確定させる（fact #4680）
-        await this.closeHiyariSegment();
+        for (const segment of this.hiyariSegments.slice()) {
+          await this.closeHiyariSegment(segment);
+        }
         this.videoChunks.splice(0);
         this.videoHeadChunk = null;
         this.logService.debug('[DrivingScore][DrivingPage] saveVideo finish. files=' + this.hiyariFileSeq);
@@ -929,9 +933,9 @@ export class DrivingPage implements OnInit {
     if (this.hasAndroid && this.loginService.settings.recording && this.mediaRecorder != null
       && this.mediaRecorder.state != 'inactive') {
       try {
-        fileName = await this.openOrExtendHiyariSegment();
+        fileName = await this.openHiyariSegment();
       } catch (error) {
-        this.logService.error('[DrivingScore][DrivingPage] openOrExtendHiyariSegment failed.', error);
+        this.logService.error('[DrivingScore][DrivingPage] openHiyariSegment failed.', error);
       }
     }
     this.pushBadPoint(score, fileName);
@@ -949,10 +953,10 @@ export class DrivingPage implements OnInit {
     // （proposal #262。fact #4705 と fact #4742 の該当部分を撤回）。
     // 区間の 1 個目は n 秒、連結された 2 個目以降は n+Δ 秒になる。
     // 動画を持たないマーカーは基準が無いので 0 とする。
-    // 値は openOrExtendHiyariSegment() が区間を開いた（延長した）時点で
-    // 確定させている。直列化（proposal #263）で await が挟まるため、
-    // ここで Date.now() を取り直すと僅かにずれる
-    const videoTime = videoPath == '' ? 0 : this.hiyariMarkerVideoTime;
+    // 再生位置は常にファイル先頭（proposal #272）。1 ヒヤリ＝1 ファイルなので
+    // ファイル先頭はヒヤリの n 秒前にあたり、発生前から再生できる。
+    // fact #4748 の計算式（ファイル先頭からの経過秒）は撤回した
+    const videoTime = 0;
 
     let msg1: string = '';
     let msg2: string = '';
