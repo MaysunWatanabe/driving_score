@@ -188,9 +188,37 @@ export class BadSpotPage implements OnInit {
       videoRecorded.src = src;
     });
 
+    await this.resolveDuration(videoRecorded);
+
     this.logService.debug('[DrivingScore][BadSpotPage] applyVideoForSpot. path=' + path
       + ' duration=' + videoRecorded.duration);
     this.seekVideo();
+  }
+
+  /**
+   * duration=Infinity を実長に確定させる（proposal #266）
+   *
+   * MediaRecorder の出力は SegmentInfo に Duration 要素を持たないため、
+   * 読み込んだ直後の duration は Infinity になる（fact #4692）。書き込み側で
+   * Duration を足すことは Android の File プラグインの制約でできないので
+   * （proposal #266）、末尾までシークさせてブラウザに実長を計算させる。
+   *
+   * 呼び出し直後に seekVideo() が本来の位置へ戻すので、ここでは戻さない。
+   * 効かない端末では Infinity のままになるが、先頭の空白は既に無いので
+   * 再生とシークは中身の範囲で成立する。
+   */
+  private async resolveDuration(video: any): Promise<void> {
+    if (isFinite(video.duration)) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      video.addEventListener('timeupdate', done, { once: true });
+      video.addEventListener('durationchange', done, { once: true });
+      setTimeout(done, 2000);
+      video.currentTime = 1e101;
+    });
+    this.logService.debug('[DrivingScore][BadSpotPage] resolveDuration. duration=' + video.duration);
   }
 
   async onBack() {
