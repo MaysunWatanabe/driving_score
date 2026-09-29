@@ -25,10 +25,6 @@ export class BLEDevice {
   private static SCAN_WINDOW_MS: number = 3000;
   //: 0 件だったときに再スキャンするまでの間隔 [ms]（proposal #77 提案 4）
   private static SCAN_RETRY_INTERVAL_MS: number = 2000;
-
-  // TEMP(investigation): BLE 名前不一致の調査用。原因判明後に削除または恒久対処と
-  // 併せて propose すること（proposal #261）
-  private debugLoggedScanIds: Set<string> = new Set();
   //: 初回を含むスキャンの最大試行回数（proposal #77 提案 4）。
   //  Android は同一アプリで 30 秒に 5 回を超えるとスキャン結果を返さなくなるため、
   //  3 回（最大 3*3000 + 2*2000 = 13,000ms）に留めて制限に余裕を残す。
@@ -169,8 +165,6 @@ export class BLEDevice {
     this.logService.debug('[DrivingScore][BLEDevice]scanStart attempt='
       + this.scanAttempt + '/' + BLEDevice.SCAN_MAX_ATTEMPTS);
     this.scanDeviceIds.splice(0);
-    // TEMP(investigation): 調査ログの重複抑止（proposal #261）
-    this.debugLoggedScanIds.clear();
     var self = this;
     await BleClient.requestLEScan({services: []},
       async (result: any) => {
@@ -187,20 +181,6 @@ export class BLEDevice {
         // device.name は Android が持つリモート名のキャッシュを返すため、
         // キャッシュが空だと広告が届いていても一致しない。広告そのものに載る
         // localName も見て、どちらかが完全一致すればマッチとする（proposal #77 提案 1）
-        // TEMP(investigation): BLE 名前不一致の調査用ログ。原因判明後に削除または
-        // 恒久対処と併せて propose すること（proposal #261）。
-        // JSON.stringify なのは、前後の空白や \u0000 の混入・短縮名を目視で
-        // 判別できるようにするため。
-        const debugKey = result.device?.deviceId ?? '-';
-        if (!self.debugLoggedScanIds.has(debugKey)) {
-          self.debugLoggedScanIds.add(debugKey);
-          self.logService.debug('[DrivingScore][BLEDevice]scanResult'
-            + ' id=' + debugKey
-            + ' name=' + JSON.stringify(result.device?.name ?? null)
-            + ' localName=' + JSON.stringify(result.localName ?? null)
-            + ' rssi=' + (result.rssi ?? '-'));
-        }
-
         const cachedName = result.device !== undefined ? result.device.name : undefined;
         const advertisedName = result.localName;
         if (result.device !== undefined
