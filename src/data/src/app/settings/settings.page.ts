@@ -19,6 +19,8 @@ import { ScoreLogic } from '../data/score-logic';
 export class SettingsPage implements OnInit {
 
   public settingRecording: string;
+  // 「ヒヤリ前後秒数」入力欄の表示値（整数秒）
+  public settingRecordingMargin: number;
   public settingGpsDemo: string;
   public settingLogStorage: string;
   public settingSensorLogStorage: string;
@@ -66,6 +68,7 @@ export class SettingsPage implements OnInit {
     await this.storage.create();
 
     this.settingRecording = this.loginService.settings.recording ? 'enable' : 'disable';
+    this.settingRecordingMargin = this.loginService.settings.recordingMargin ?? 15;
     this.settingGpsDemo = this.loginService.settings.gpsDemo ? 'enable' : 'disable';
     this.settingLogStorage = this.loginService.settings.logStorage ? 'enable' : 'disable';
     this.settingSensorLogStorage = this.loginService.settings.sensorLogStorage ? 'enable' : 'disable';
@@ -76,7 +79,45 @@ export class SettingsPage implements OnInit {
 
   async onSettingRecording(e: any) {
     this.loginService.settings.recording = (e.detail.value == 'enable');
+    // 「ヒヤリ前後秒数」の無効化条件が settingRecording を見ているため
+    // （fact #4687）、表示用フィールドも同時に更新する。これが無いと録画を
+    // 有効に戻しても入力欄が無効のままになる。
+    this.settingRecording = e.detail.value;
     await this.storage.set(environment.settingRecording, this.loginService.settings.recording);
+  }
+
+  /**
+   * ヒヤリ前後秒数の確定（fact #4633 / #4684 / #4688 / #4701 / #4702）
+   *
+   * ionChange ではなく ionBlur で検証する。ionChange だと「30」を打つ途中の
+   * 「3」が範囲外として即座に戻され、入力できなくなるため。
+   *
+   * 有効値は Number.isInteger かつ 5 以上 60 以下。範囲外・非数値・小数
+   * （切り捨てもしない）・空欄はいずれも保存せず、入力欄の表示を直前の
+   * 保存値へ戻す（未設定時は 15）。エラー表示は出さない。
+   */
+  async onSettingRecordingMargin(e: any) {
+    const raw = e?.target?.value;
+    const value = (raw === '' || raw === null || raw === undefined) ? NaN : Number(raw);
+
+    if (!Number.isInteger(value) || value < 5 || 60 < value) {
+      // 保存せず、表示を直前の保存値へ戻す。
+      //
+      // [value] は片方向バインディングなので、フィールドへ代入するだけでは
+      // DOM は書き換わらない。不正入力のときは「戻し先 == 現在のフィールド値」
+      // になることが多く（例: 保存値 5 のまま 99 を入力）、Angular からは
+      // 変化なしに見えて入力欄が 99 のまま残る。要素へ直接書き戻す。
+      const restored = this.loginService.settings.recordingMargin ?? 15;
+      this.settingRecordingMargin = restored;
+      if (e?.target != null) {
+        e.target.value = restored;
+      }
+      return;
+    }
+
+    this.loginService.settings.recordingMargin = value;
+    this.settingRecordingMargin = value;
+    await this.storage.set(environment.settingRecordingMargin, value);
   }
 
   async onSettingGpsDemo(e: any) {

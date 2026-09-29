@@ -26,6 +26,8 @@ export class LoginService {
 
   public settings = {
     recording: false,
+    // ヒヤリ前後秒数（整数秒）。診断開始時に ui.driving.page が 1 回読む
+    recordingMargin: 15,
     gpsDemo: true,
     logStorage: false,
     sensorLogStorage: false,
@@ -70,6 +72,7 @@ export class LoginService {
     }
 
     this.settings.recording = await this.storage.get(environment.settingRecording) ?? true;
+    this.settings.recordingMargin = await this.storage.get(environment.settingRecordingMargin) ?? 15;
     this.settings.gpsDemo = await this.storage.get(environment.settingGpsDemo) ?? false;
     this.settings.logStorage = await this.storage.get(environment.settingLogStorage) ?? false;
     this.settings.sensorLogStorage = await this.storage.get(environment.settingSensorLogStorage) ?? false;

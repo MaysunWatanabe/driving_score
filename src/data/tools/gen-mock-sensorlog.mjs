@@ -173,7 +173,31 @@ function nextWobbleUnit() {
 const SCENARIOS = [
   'cruise', 'accel_decel', 'hard_brake', 'sharp_curve', 'mixed',
   'steer_stable', 'steer_wobble_weak', 'steer_wobble_strong',
+  'hiyari_recording',
 ];
+
+//////// hiyari_recording (proposal #253 / #259、fact #4717 / #4736)
+//
+// ヒヤリ録画 E2E 用。ヒヤリを指定 6 点で発火させる。
+//
+// 発火条件は scoreLogicFunction.txt（凍結）の実装より
+//   Jerk     = (acc[i] - acc[i-1]) / dt          [G/s]
+//   Jerk_LPF = Jerk_LPF[i-1] * 0.61413 + Jerk[i] * 0.38587
+//   発火      = |Jerk_LPF| > 0.4
+//   抑止      = timestamp <= hiyariTimestamp + 1000
+//
+// 判定は実機 BLE 100ms 経路（proposal #62）。ble-can-emulator.py は longAcc を
+// 10 レコードの区間平均で集約するため（AGGREGATE_RECORDS = 10）、10ms 幅の
+// 鋭いパルスは 1/10 に薄まって発火しない。パルスは 100ms 境界に揃え、幅を
+// 100ms 以上にする必要がある。
+//
+// dt = 0.1s で振幅 A の段差が生む Jerk_LPF は 3.8587 * A なので、
+// A = 0.20G のとき 0.772 G/s となり閾値 0.4 に対して約 1.9 倍の余裕がある。
+const HIYARI_TIMES_SEC = [15, 30, 40, 45, 48, 60];
+/** パルス振幅 [G]。0.01 刻みの量子化で正確に表現できる値にする */
+const HIYARI_PULSE_G = 0.20;
+/** パルス幅 [s]。集約単位 100ms の 3 倍 */
+const HIYARI_PULSE_SEC = 0.3;
 const SENSOR_MODES = ['smartphoneOnly', 'canConnected'];
 
 /** リポジトリに commit する正準セット (#12) */
@@ -197,6 +221,7 @@ const DEFAULT_DURATION_SEC = 60;
 // ---------------------------------------------------------------------------
 
 const kmhToMs = (kmh) => kmh / 3.6;
+const msToKmh = (ms) => ms * 3.6;
 const degToRad = (deg) => (deg * Math.PI) / 180;
 const radToDeg = (rad) => (rad * 180) / Math.PI;
 const clamp = (v, min, max) => (v < min ? min : v > max ? max : v);
@@ -353,23 +378,53 @@ function scenarioSteerWobble(localSec, duty) {
   };
 }
 
-/** 4 区間を等分連結 (#12) */
-function scenarioMixed(localSec, scopeSec) {
-  const segSec = scopeSec / MIXED_SEGMENTS.length;
-  const index = Math.min(MIXED_SEGMENTS.length - 1, Math.floor(localSec / segSec));
-  return evaluateScenario(MIXED_SEGMENTS[index], localSec - index * segSec, segSec);
+/**
+ * ヒヤリ録画 E2E 用シナリオ (proposal #253 / #259)
+ *
+ * cruise の 40km/h 定速を土台に、各発火時刻 t_k で longAcc に
+ * +0.20G を 300ms、続けて -0.20G を 300ms 置く。車速は積分で整合させ、
+ * 40 -> 約 42 -> 40 km/h と戻す。
+ *
+ * 立ち下がり（t_k + 0.3）と逆パルスの立ち上がり（t_k + 0.6）でも
+ * |Jerk_LPF| は 0.4 を超えるが、いずれも発火から 1000ms の抑止範囲内なので
+ * 二重発火しない。抑止が明ける t_k + 1.0 では約 0.07 まで減衰している。
+ *
+ * @param {number} absSec シナリオ先頭からの絶対秒（走行区間内のローカル秒ではない）
+ */
+function scenarioHiyariRecording(absSec) {
+  for (const t0 of HIYARI_TIMES_SEC) {
+    const dt = absSec - t0;
+    if (dt < 0 || 2 * HIYARI_PULSE_SEC <= dt) {
+      continue;
+    }
+    // 前半 300ms は +0.20G、後半 300ms は -0.20G
+    const accG = dt < HIYARI_PULSE_SEC ? HIYARI_PULSE_G : -HIYARI_PULSE_G;
+    // 車速は加速度の積分。前半で増えた分を後半で戻す
+    const gainedSec = dt < HIYARI_PULSE_SEC ? dt : (2 * HIYARI_PULSE_SEC - dt);
+    const speedKmh = CRUISE_SPEED_KMH + msToKmh(HIYARI_PULSE_G * G * gainedSec);
+    return { speedKmh, longAccG: accG, yawRateDeg: 0 };
+  }
+  return scenarioCruise();
 }
 
-function evaluateScenario(scenario, localSec, scopeSec) {
+/** 4 区間を等分連結 (#12) */
+function scenarioMixed(localSec, scopeSec, absSec = 0) {
+  const segSec = scopeSec / MIXED_SEGMENTS.length;
+  const index = Math.min(MIXED_SEGMENTS.length - 1, Math.floor(localSec / segSec));
+  return evaluateScenario(MIXED_SEGMENTS[index], localSec - index * segSec, segSec, absSec);
+}
+
+function evaluateScenario(scenario, localSec, scopeSec, absSec = 0) {
   switch (scenario) {
     case 'cruise': return scenarioCruise();
     case 'accel_decel': return scenarioAccelDecel(localSec);
     case 'hard_brake': return scenarioHardBrake(localSec, scopeSec);
     case 'sharp_curve': return scenarioSharpCurve(localSec);
-    case 'mixed': return scenarioMixed(localSec, scopeSec);
+    case 'mixed': return scenarioMixed(localSec, scopeSec, absSec);
     case 'steer_stable': return scenarioSteerStable(localSec);
     case 'steer_wobble_weak': return scenarioSteerWobble(localSec, STEER_WOBBLE_DUTY_WEAK);
     case 'steer_wobble_strong': return scenarioSteerWobble(localSec, STEER_WOBBLE_DUTY_STRONG);
+    case 'hiyari_recording': return scenarioHiyariRecording(absSec);
     default: throw new Error(`unknown scenario: ${scenario}`);
   }
 }
@@ -383,6 +438,21 @@ function evaluateScenario(scenario, localSec, scopeSec) {
  * 3 状態規則を適用せず直接指定する。
  */
 function evaluateTrip(scenario, localSec, durationSec) {
+  // hiyari_recording はトリップ構成（出車→発進→減速→後退→駐車）を持たず、
+  // 全区間を走行とする（proposal #260）。
+  //
+  // トリップの区間境界は longAcc に段差を作り、|Jerk_LPF| が 0.8〜1.0 となって
+  // ヒヤリが発火してしまう（duration=90 で 4.5 / 9.0 / 64.8 / 72.9 秒）。
+  // 指定した 6 点以外で発火すると、切り出しファイルの本数とマーカーの
+  // 対応が proposal #253 の期待値と合わなくなる。
+  //
+  // 前例: cruise.smartphoneOnly も canData を持たないため全区間走行である
+  // （proposal #32）。
+  if (scenario === 'hiyari_recording') {
+    const base = evaluateScenario(scenario, localSec, durationSec, localSec);
+    return { ...base, shift: SHIFT_D, pedal: null };
+  }
+
   const r = localSec / durationSec;
   const T = TRIP;
 
@@ -410,7 +480,7 @@ function evaluateTrip(scenario, localSec, durationSec) {
   if (r < T.driveEnd) {
     const span = (T.driveEnd - T.launchEnd) * durationSec;
     const t = localSec - T.launchEnd * durationSec;
-    const base = evaluateScenario(scenario, t, span);
+    const base = evaluateScenario(scenario, t, span, localSec);
     return { ...base, shift: SHIFT_D, pedal: null };
   }
 
@@ -652,6 +722,69 @@ function selfCheck(gzipped, expectedCount) {
   return errors;
 }
 
+/**
+ * hiyari_recording の発火時刻を検証する（proposal #259 §6-2 / #260 §5-2）
+ *
+ * 合格判定は実機 BLE 100ms 経路なので、ble-can-emulator.py と同じ 10 件区間
+ * 平均で集約してから、scoreLogicFunction.txt と同じ式で発火時刻を再現する。
+ * 指定 6 点と完全一致（許容 ±100ms）しなければ失敗とする。余分な発火が
+ * 1 点でもあれば失敗。
+ *
+ * この検証が無いと、トリップ境界の段差などで意図しない発火が混ざっても
+ * 気づけず、実機 E2E でファイル本数が合わない形で初めて表面化する。
+ */
+function verifyHiyariFirings(records, durationSec) {
+  const q = (x, step) => Math.floor(x / step + 0.5) * step;
+
+  // 10 件ずつ区間平均（ble-can-emulator.py の AGGREGATE_RECORDS / _MEAN_FIELDS）
+  const frames = [];
+  for (let i = 0; i < records.length; i += 10) {
+    const w = records.slice(i, i + 10);
+    const mean = (f) => w.reduce((acc, r) => acc + (r.canData?.[f] ?? 0), 0) / w.length;
+    frames.push({
+      timestamp: w[0].videoTime,
+      longAcc: q(mean('longAcc'), 0.01),
+      latAcc: q(mean('latAcc'), 0.01),
+    });
+  }
+
+  // Jerk -> Jerk_LPF -> 発火（scoreLogicFunction.txt と同一の式）
+  const T = 0.05;
+  const F = 2;
+  const tau = 1 / (2 * Math.PI * F);
+  const keep = tau / (T + tau);
+  const gain = T / (T + tau);
+
+  let lpfLong = 0;
+  let lpfLat = 0;
+  let suppressUntil = -Infinity;
+  const fired = [];
+  for (let i = 1; i < frames.length; i++) {
+    const dt = (frames[i].timestamp - frames[i - 1].timestamp) / 1000;
+    lpfLong = lpfLong * keep + ((frames[i].longAcc - frames[i - 1].longAcc) / dt) * gain;
+    lpfLat = lpfLat * keep + ((frames[i].latAcc - frames[i - 1].latAcc) / dt) * gain;
+    if (frames[i].timestamp <= suppressUntil) {
+      continue;
+    }
+    if (Math.abs(lpfLong) > 0.4 || Math.abs(lpfLat) > 0.4) {
+      fired.push(frames[i].timestamp / 1000);
+      suppressUntil = frames[i].timestamp + 1000;
+    }
+  }
+
+  // duration が短い場合は範囲外の発火点を打ち切る（proposal #259 §6-4）
+  const expect = HIYARI_TIMES_SEC.filter((t) => t < durationSec);
+  const ok = fired.length === expect.length
+    && fired.every((t, i) => Math.abs(t - expect[i]) <= 0.1);
+  if (!ok) {
+    throw new Error(
+      `hiyari 発火時刻が期待と一致しません\n`
+      + `  実測: ${fired.join(', ')}\n`
+      + `  期待: ${expect.join(', ')}（許容 ±100ms）`);
+  }
+  return fired;
+}
+
 // ---------------------------------------------------------------------------
 // 生成 + 書き出し
 // ---------------------------------------------------------------------------
@@ -668,11 +801,21 @@ function generate({ scenario, sensorMode, durationSec, baseMs, outDir }) {
     throw new Error(`セルフチェック失敗: ${scenario} / ${sensorMode}`);
   }
 
+  // hiyari_recording は発火時刻まで検証する（proposal #259 §6-2 / #260 §5-2）
+  let hiyariFired = null;
+  if (scenario === 'hiyari_recording' && sensorMode === 'canConnected') {
+    hiyariFired = verifyHiyariFirings(
+      lines.map((l) => JSON.parse(l).sensor), durationSec);
+  }
+
   mkdirSync(outDir, { recursive: true });
   const fileName = `sensor-log.${scenario}.${sensorMode}.txt.gz`;
   const filePath = join(outDir, fileName);
   writeFileSync(filePath, gzipped);
 
+  const hiyariSummary = hiyariFired != null
+    ? ` hiyari=[${hiyariFired.join(', ')}]s`
+    : '';
   const summary =
     sensorMode === 'canConnected'
       ? `minLongAcc=${stats.minLongAccG.toFixed(3)}G maxLatAcc=${stats.maxLatAccG.toFixed(3)}G ` +
@@ -682,7 +825,7 @@ function generate({ scenario, sensorMode, durationSec, baseMs, outDir }) {
   console.log(
     `  [OK] ${fileName}  ${lines.length} 行 / ${gzipped.length} bytes (gz) / ${text.length} bytes (raw)`,
   );
-  console.log(`       ${summary}`);
+  console.log(`       ${summary}${hiyariSummary}`);
   return filePath;
 }
 

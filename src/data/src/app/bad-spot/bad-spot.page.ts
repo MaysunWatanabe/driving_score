@@ -50,8 +50,9 @@ export class BadSpotPage implements OnInit {
 
   // コンポーネントの初期化時に実行される
   ngOnInit() {
-    const path = "" + this.route.snapshot.paramMap.get('path') ?? '';
-    this.videoPath = path.split('@').join('/');
+    // 動画パスはマーカーが持つ（proposal #257）。ルートパラメータは参照しない。
+    // videoPath は「現在 src に入っているマーカーのパス」を保持する用途に変えた。
+    this.videoPath = '';
 
     this.label1 = this.loginService.settings.label.label1;
     this.label2 = this.loginService.settings.label.label2;
@@ -93,7 +94,7 @@ export class BadSpotPage implements OnInit {
     this.mapService.addListener("mark", (title: string, pos: number) => {
       self.spotPos = pos;
       self.onPointer();
-      self.seekVideo();
+      self.applyVideoForSpot();
     });
 
     console.log('[DrivingScore][BadSpotPage] loadMap: Finish');
@@ -104,10 +105,16 @@ export class BadSpotPage implements OnInit {
     videoRecorded.autoplay = false;
     videoRecorded.loop = false;
     videoRecorded.muted = true;
-    if (this.videoPath != '' ) {
-      videoRecorded.src = this.videoPath;
-    }
-    this.seekVideo();
+
+    // 読み込みに失敗したら空表示に落とす（proposal #257 §5-2）。
+    // ファイルの存在確認はしない。
+    videoRecorded.addEventListener('error', () => {
+      this.logService.error('[DrivingScore][BadSpotPage] video error. path=' + this.videoPath, null);
+      this.videoPath = '';
+      videoRecorded.removeAttribute('src');
+    });
+
+    await this.applyVideoForSpot();
 
     var self = this;
     var lastTime = videoRecorded.currentTime;
@@ -117,9 +124,16 @@ export class BadSpotPage implements OnInit {
       }
       lastTime = videoRecorded.currentTime;
 
+      // 自動追尾は「現在 src に入っているファイルに属するマーカー」だけを
+      // 走査する（fact #4683）。ヒヤリ動画が複数に分かれたため、全マーカーを
+      // 対象にすると他ファイルのマーカーを誤って拾う。
+      // ファイル末尾まで再生しても次のファイルへは自動遷移しない。
       let targetPos = self.spotPos;
       const length = self.mapService.getMarkerLength();
       for (let pos=0; pos<length; pos++) {
+        if (self.mapService.getMarkerVideoPath(pos) != self.videoPath) {
+          continue;
+        }
         let time = self.mapService.getMarkerVideoTime(pos);
         if (lastTime < time) {
           break;
@@ -135,6 +149,78 @@ export class BadSpotPage implements OnInit {
     console.log('[DrivingScore][BadSpotPage] loadVideo: Finish');
   }
 
+  /**
+   * 選択中マーカーの動画を表示に反映する（fact #4683 / proposal #257 / #258）
+   *
+   * ファイルが現在の src と異なるときだけ差し替える。差し替えたときは
+   * loadedmetadata を待ってから seek する（待たずに currentTime を設定すると
+   * 無視される端末があるため）。同一ファイルなら待たずに seek のみ。
+   */
+  private async applyVideoForSpot() {
+    const videoRecorded = this.videoElement.nativeElement;
+    const path = this.mapService.getMarkerVideoPath(this.spotPos) ?? '';
+
+    if (path == this.videoPath) {
+      // 同じファイル。既に読み込み済みなので待たずに seek する
+      this.seekVideo();
+      return;
+    }
+
+    this.videoPath = path;
+    if (path == '') {
+      // 動画が無いマーカー。動画領域を空にして地図だけ使える状態にする
+      videoRecorded.removeAttribute('src');
+      return;
+    }
+
+    // file:// は Capacitor の WebView から直接読めないため、src へ入れる
+    // 瞬間だけ変換する（proposal #258）。保持値は file:// のまま。
+    // 非 Android（DemoData の blob: URL）は変換しない。
+    const src = (Capacitor.getPlatform() == 'android')
+      ? Capacitor.convertFileSrc(path)
+      : path;
+
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      videoRecorded.addEventListener('loadedmetadata', done, { once: true });
+      videoRecorded.addEventListener('error', done, { once: true });
+      setTimeout(done, 5000);
+      videoRecorded.src = src;
+    });
+
+    await this.resolveDuration(videoRecorded);
+
+    this.logService.debug('[DrivingScore][BadSpotPage] applyVideoForSpot. path=' + path
+      + ' duration=' + videoRecorded.duration);
+    this.seekVideo();
+  }
+
+  /**
+   * duration=Infinity を実長に確定させる（proposal #266）
+   *
+   * MediaRecorder の出力は SegmentInfo に Duration 要素を持たないため、
+   * 読み込んだ直後の duration は Infinity になる（fact #4692）。書き込み側で
+   * Duration を足すことは Android の File プラグインの制約でできないので
+   * （proposal #266）、末尾までシークさせてブラウザに実長を計算させる。
+   *
+   * 呼び出し直後に seekVideo() が本来の位置へ戻すので、ここでは戻さない。
+   * 効かない端末では Infinity のままになるが、先頭の空白は既に無いので
+   * 再生とシークは中身の範囲で成立する。
+   */
+  private async resolveDuration(video: any): Promise<void> {
+    if (isFinite(video.duration)) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      video.addEventListener('timeupdate', done, { once: true });
+      video.addEventListener('durationchange', done, { once: true });
+      setTimeout(done, 2000);
+      video.currentTime = 1e101;
+    });
+    this.logService.debug('[DrivingScore][BadSpotPage] resolveDuration. duration=' + video.duration);
+  }
+
   async onBack() {
     let pos = this.spotPos - 1;
     if (pos < 0) {
@@ -144,7 +230,7 @@ export class BadSpotPage implements OnInit {
     console.log('[DrivingScore][BadSpotPage] onBack '+this.spotPos);
 
     this.onPointer();
-    this.seekVideo();
+    await this.applyVideoForSpot();
   }
 
   async onNext() {
@@ -156,7 +242,7 @@ export class BadSpotPage implements OnInit {
     console.log('[DrivingScore][BadSpotPage] onNext '+this.spotPos);
 
     this.onPointer();
-    this.seekVideo();
+    await this.applyVideoForSpot();
   }
 
   async onPointer() {
