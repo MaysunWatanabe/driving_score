@@ -4,4 +4,10 @@
     <string name="title_activity_main">driving-score</string>
     <string name="package_name">jp.co.nissan.drivingscore</string>
     <string name="custom_url_scheme">jp.co.nissan.drivingscore</string>
+
+    <!-- ヒヤリ表示ウィジェット 2-1a（proposal #298）。骨組みのため固定文字列 -->
+    <string name="widget_hiyari_label">ヒヤリ表示</string>
+    <string name="widget_hiyari_datetime">9/29 (火)　16:29</string>
+    <string name="widget_hiyari_count">ヒヤリ 0</string>
+    <string name="widget_hiyari_message">今日の運転はヒヤリがなかったよ</string>
 </resources>

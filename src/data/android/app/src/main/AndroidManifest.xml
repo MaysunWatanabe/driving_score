@@ -28,6 +28,23 @@
 
         <meta-data android:name="com.google.android.geo.API_KEY" android:value="${GOOGLE_MAPS_API_KEY}"/>
 
+        <!--
+            ヒヤリ表示ウィジェット 2-1a の骨組み（proposal #298）
+            android/ を直接管理する方針のため、ここへ直接書く。
+            npx cap sync は web 資産とプラグイン定義だけを更新するので上書きされない。
+        -->
+        <receiver
+            android:name="jp.co.nissan.drivingscore.HiyariWidgetProvider"
+            android:label="@string/widget_hiyari_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_hiyari_info" />
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
