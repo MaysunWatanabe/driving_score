@@ -1,109 +1,181 @@
-<!-- 作成: 2026-09-18 17:54:52 JST | 更新: 2026-09-25 11:02:05 JST -->
+<!-- 作成: 2026-09-25 11:02:06 JST | 更新: 2026-09-29 15:17:35 JST -->
 
 # ui.badspot.page — ヒヤリ地点確認画面 (画面6-1)
 
 ## 概要
 走行後に、ヒヤリ地点マーカーを 1 点ずつ確認するページです。
 
-- ルートパラメータ `path`（`@` 区切りを `/` に復元）から動画パスを取得します。
+- 動画パスは、ルートパラメータからではなく **マーカーごとの動画パス `mapService.getMarkerVideoPath(pos)`** から取得します。
+  - ルート `/bad-spot/:path` は残しますが、本画面は `:path` を参照しません（「ルーティング」節）。
 - 映像は非オートプレイ・ミュートで再生します。
 - 300ms 周期で `videoElement.currentTime` を監視し、マーカーの `videoTime` を線形走査して、現在時刻に対応するヒヤリ地点を自動追尾します。
 - 前/次ボタンでヒヤリ地点をリング状に切り替えます。選択中のマーカーは `hiyar_big.png` で強調表示します。
 
-2026 年度改修で、6-1 は **複数の動画ファイルに対応** します。マーカーごとに対応する動画ファイルが異なる場合は、マーカーを選択したときに動画 `src` を差し替えます（「複数動画ファイル対応」節を参照）。
+2026 年度改修で、6-1 は **複数の動画ファイルに対応** します。
+- 録画側は、ヒヤリごとに新しい動画ファイル `hiyari.NN.webm` を作成します。
+- マーカーごとに対応する動画ファイルが異なるため、マーカーを選択したときに動画 `src` を差し替えます。
+- 詳細は「動画パスの契約」「複数動画ファイル対応」の各節を参照してください。
 
-本画面は **ヒヤリ地点（イベント発生地点）を閲覧するための専用画面** です。スコアの減点内容や減点根拠を示す画面ではありません。ヒヤリ判定はスコア値を変更しないため（後述「業務ルール」参照）、本画面が表示するのは次の項目だけです。
-- 発生時刻
-- 位置
-- 付随メッセージ（評価コメント）
-- 録画動画
+本画面は **ヒヤリ地点（イベント発生地点）を閲覧するための専用画面** です。
+- スコアの減点内容や減点根拠を示す画面ではありません。
+- ヒヤリ判定はスコア値を変更しません（後述「業務ルール」参照）。
+- 本画面が表示するのは次の項目だけです。
+  - 発生時刻
+  - 位置
+  - 付随メッセージ（評価コメント）
+  - 録画動画
 
 2026 年度改修要求の出所は次の 2 資料です。
 - 日産自動車『運転機能チェックアプリの一次仕様』2026-08-04
 - メイサンソフト『要求仕様確認』2026-09-17
 
-この改修要求で、**本画面の役割は「従来通り」と確定** しています。地図上のヒヤリポイントをタップしたときに、録画動画の再生、発生日時の表示、評価コメントの表示を行います。
+この改修要求で、**本画面の役割は「従来通り」と確定** しています。地図上のヒヤリポイントをタップしたときに、次の 3 つを行います。
+- 録画動画の再生
+- 発生日時の表示
+- 評価コメントの表示
 
 一方で、次の点は改修要求の影響を受けます。これらは「2026 年度改修要求による影響」節に整理します。
 - 遷移元
-- 動画の粒度（複数ファイル化）
+- 動画の粒度（ヒヤリごとの個別ファイル化）
 - 画面の向き
 
 ## 真実源
 - `src/data/src/app/bad-spot/bad-spot.page.ts`
 - `src/data/src/app/bad-spot/bad-spot.page.html`
-- 複数動画ファイル対応の挙動は、承認済みファクト「6-1 ヒヤリシーン表示の複数ファイル対応」を真実源とします。実装がこのファクトに追随するまでは、コードよりファクトを優先します。
+- 次の承認済みファクトを真実源とします。実装がファクトに追随するまでは、コードよりファクトを優先します。
+  - 複数動画ファイル対応の挙動：「6-1 ヒヤリシーン表示の複数ファイル対応」
+  - 動画パスの受け渡し：承認済み設計判断「pushBadPoint() → drawMarker() 第 5 引数のフルパス / getMarkerVideoPath(pos) を src に使用」
+  - パス形式と変換：承認済み設計判断「file:// フルパス保持 / src 設定直前のみ Capacitor.convertFileSrc()」
+- 動画ファイル構成に関する共通の承認済み設計判断も参照します。
+  - ヒヤリごとの `hiyari.NN.webm`
+  - `markersVideoTime` のファイル先頭基準化
+  - Duration を書き込まず、`applyVideoForSpot()` で実長を確定させること
 
 ## ルーティング
 - パス: `/bad-spot/:path`
-- `:path` は、動画パスの `/` を `@` に置換した文字列です。
-- 複数ファイル化した後に `:path` が何を指すか（初期選択マーカーの動画か、など）は未確定です。「未確定事項」を参照してください。
+- ルート定義 `/bad-spot/:path` は残します。
+- 本画面へ遷移する画面は、`:path` に **ダミー値 `'-'`** を渡します。
+- 本画面は `:path` を参照しません。
+  - 従来の「動画パスの `/` を `@` に置換して渡し、`@` を `/` に復元する」方式は、本画面では使いません。
+- 表示する動画は、選択マーカーの `getMarkerVideoPath(pos)` だけで決まります。
+
+## 動画パスの契約
+- マーカー登録時の受け渡し
+  - `pushBadPoint()` は、`saveDirectoryPath` とファイル名を結合したフルパスを `drawMarker()` の第 5 引数に渡します。
+  - これにより、マーカーごとに動画ファイルのフルパスが保持されます（`markersVideoPath`）。
+- 本画面での取得
+  - `mapService.getMarkerVideoPath(pos)` の戻り値を、そのまま再生対象のパスとして扱います。
+- パス形式
+  - 次の 3 つは、いずれも **`file://` フルパスのまま** 保ちます。
+    - `markersVideoPath`
+    - `getMarkerVideoPath()` の戻り値
+    - 同一ファイル判定で比較する値
+- 同一ファイル判定
+  - 選択マーカーのパス（`getMarkerVideoPath(pos)`）と、現在の `videoPath` を **文字列比較** して判定します。
+  - 比較は変換前の値同士で行います。
+- `src` への変換
+  - `videoElement.src` を設定する **直前だけ**、`Capacitor.convertFileSrc()` で `https://localhost/_capacitor_file_/...` に変換します。
+  - 変換後の値は、`videoPath` にも同一ファイル判定にも使いません。
+- 非 Android（DemoData）
+  - `convertFileSrc()` による変換を行いません。
+  - `blob:` URL をそのまま使います。
+
+## 動画ファイルの構成（録画側の確定事項・参照）
+本画面の再生挙動の前提となる、録画側の承認済み設計判断です。本画面ではこれらを参照するだけで、変更はしません。
+- ファイルの単位
+  - ヒヤリごとに、必ず新しい `hiyari.NN.webm` を開きます。
+  - 区間が重なる場合は、複数ファイルを同時に書き込みます。そのため、同じ時間帯の映像が複数のファイルに含まれることがあります。
+- `videoTime` の基準
+  - `markersVideoTime` は、そのマーカーが属するファイルの先頭を基準にした秒数です。
+  - 算出式は `floor((tVideo - segmentFrom)/1000)` で、整数秒です。
+  - `seekVideo()` の値は、そのファイル内のオフセットとしてそのまま使えます。
+- Duration
+  - 動画ファイルには Duration を書き込みません。
+  - 実長は、本画面の `applyVideoForSpot()` で `currentTime = 1e101` へシークすることで確定させます（後述）。
 
 ## 状態
 ```
 label1..4: string
-videoPath: string        // '@'→'/' 復元後（初期動画パス）
+videoPath: string        // 現在 src に設定中の動画の file:// フルパス（変換前）。DemoData では blob: URL。未設定時は ''
 videoTimer: any          // 300ms setInterval id
 spotPos: number = 0      // 選択中のマーカー index
 spotTimestamp: string
 spotComment1..4: string
 ```
-- 複数ファイル対応後は、`videoElement.src` に「現在再生対象の動画ファイル」を保持します。この値は、マーカー選択に応じて差し替えます。
+- `videoPath` は、同一ファイル判定に使う「現在再生対象の動画ファイル」です。マーカー選択に応じて更新します。
+- `videoElement.src` には、`videoPath` を変換した値（Android では `convertFileSrc()` 後の URL）が入ります。
 
 ## ライフサイクル
 | タイミング | 処理 |
 | --- | --- |
 | constructor | `logService.initialize(file)` を実行します。 |
-| `ngOnInit()` | パスパラメータを取り出して `@` を `/` に復元し、label を反映します。 |
+| `ngOnInit()` | label を反映します。パスパラメータは参照しません。 |
 | `ionViewWillEnter()` | Android のみ `screenOrientation.lock(PORTRAIT)` を実行します。 |
 | `ionViewDidEnter()` | `loadMap()` と `loadVideo()` を実行します。 |
 | `ionViewWillLeave()` | `clearInterval(videoTimer)` と `mapService.stop()` を実行します。マーカーは残します。 |
 
 ## `loadMap()`
-1. `spotPos = mapService.getSelectMarkerPos()` で選択位置を復帰します。この値は遷移元画面が設定します（現行は [[ui.driving.page]]、改修後は 1-2 も含みます）。
+1. `spotPos = mapService.getSelectMarkerPos()` で選択位置を復帰します。
+   - この値は遷移元画面が設定します。現行は [[ui.driving.page]] で、改修後は 1-2 も含みます。
 2. `uluru = mapService.getMarkerPosition(spotPos)` を中心に地図を生成し、`clearCarMarker()` を実行します。
 3. `onPointer()` を呼び、地図の中心と選択マーカーを反映します。
-4. `mark` リスナでマーカーのタップを受け付けます。タップされると `spotPos = pos` とし、`onPointer()` を実行してから「マーカー選択時の動画切替」（後述）を行います。
+4. `mark` リスナでマーカーのタップを受け付けます。
+   - タップされると `spotPos = pos` とし、`onPointer()` を実行します。
+   - その後、`applyVideoForSpot(spotPos)`（後述）を実行します。
 
 ## `loadVideo()`
 1. videoElement を `autoplay=false, loop=false, muted=true` に設定します。
-2. `videoPath` があれば `src` に設定します。
-3. `seekVideo()` で、現在のマーカーの videoTime を反映します。
-4. **300ms 周期** の setInterval で `videoElement.currentTime` を監視します。
+2. `applyVideoForSpot(spotPos)` で、初期選択マーカーの動画を設定して、その位置へシークします。
+   - 初期表示の動画は `getMarkerVideoPath(spotPos)` で決まります。ルートパラメータには依存しません。
+3. **300ms 周期** の setInterval で `videoElement.currentTime` を監視します。
    - 値に変化がなければ何もしません（return）。
    - 変化があれば、`spotPos` を初期値としてマーカー配列を先頭から走査し、`getMarkerVideoTime(pos) <= currentTime` を満たす最後の pos を採用します。
-   - **走査の対象は、現在の `src` と同じ動画ファイルに属するマーカーだけです。** 自動追尾によって別ファイルのマーカーへ移ることはありません。動画が末尾まで再生されても、次のファイルへ自動では切り替えません。
+   - **走査の対象は、`getMarkerVideoPath(pos)` が現在の `videoPath` と一致する（同じ動画ファイルに属する）マーカーだけです。**
+     - 自動追尾によって別ファイルのマーカーへ移ることはありません。
+     - 動画が末尾まで再生されても、次のファイルへ自動では切り替えません。
    - `spotPos` が変わった場合は `onPointer()` を実行します（`src` は差し替えません）。
 
-## 複数動画ファイル対応（マーカー選択時の動画切替）
-マーカーを選択する操作は次の 3 つです。
+## `applyVideoForSpot(pos)` — マーカー選択時の動画設定
+次のすべての場面で使う共通処理です。
+- 初期表示
 - 地図上のマーカーのタップ
 - `onBack()`
 - `onNext()`
 
-いずれの操作でも、動画は以下の規則で切り替えます。
-
-1. 選択されたマーカーの動画ファイルが、**現在の `src` と異なる** 場合
-   - `src` をそのマーカーの動画ファイルに差し替えます。
-   - その後に `seekVideo()` を実行します。
-2. 選択されたマーカーの動画ファイルが、**現在の `src` と同じ** 場合
-   - `src` は差し替えず、`seekVideo()`（シーク）だけを行います。
-3. `src` を差し替えた後も、videoElement は `autoplay=false` / `loop=false` / `muted=true` を維持します。
+1. `path = mapService.getMarkerVideoPath(pos)` を取得します（`file://` フルパス。DemoData では `blob:` URL）。
+2. `path` と現在の `videoPath` を文字列比較します。
+3. **異なる場合**（`src` を差し替えます）
+   - `videoPath = path` とします。
+   - `videoElement.src` に次の値を設定します。
+     - Android: `Capacitor.convertFileSrc(path)`
+     - 非 Android（DemoData）: `path` をそのまま設定します。
+   - 動画ファイルに Duration が書かれていないため、`currentTime = 1e101` へシークして実長を確定させます。
+   - その後、`seekVideo()` でマーカーの `videoTime` へシークします。
+4. **同じ場合**
+   - `src` は差し替えず、`seekVideo()` だけを行います。
+5. 差し替えた後も、videoElement は `autoplay=false` / `loop=false` / `muted=true` を維持します。
    - 差し替えただけで自動再生が始まることはありません。
-4. 300ms 周期の `currentTime` 自動追尾は、同じファイル内のマーカーに限ります。ファイルをまたいで自動で遷移することはありません。
-5. 前/次ボタンによるリング巡回は、**全マーカー** を対象とします。
-   - 巡回がファイルをまたぐ場合は、`src` の差し替えを伴います。
 6. 動画ファイルが存在しない場合の挙動は、現行のまま変更しません。
    - 動画領域は空になり、地図上のマーカー巡回のみ可能です。
+
+## 複数動画ファイル対応（規則のまとめ）
+- マーカー選択（地図タップ / `onBack()` / `onNext()`）のとき
+  - 動画ファイルが現在の `src` と異なれば、`src` を差し替えてから `seekVideo()` を行います。
+  - 同じファイルなら、seek だけを行います。
+  - 判定と差し替えは `applyVideoForSpot()` が担います。
+- 300ms 周期の `currentTime` 自動追尾は、同じファイル内のマーカーに限ります。ファイルをまたいで自動で遷移することはありません。
+- 前/次ボタンによるリング巡回は、**全マーカー** を対象とします。巡回がファイルをまたぐ場合は、`src` の差し替えを伴います。
+- `src` の差し替え後も、`autoplay=false` / `loop=false` / `muted=true` を維持します。
+- 動画ファイルが存在しない場合の挙動は、現行のまま変更しません。
 
 ## 操作
 **`onBack()`**
 - `spotPos--` を実行します。0 未満になった場合は末尾に移ります。
-- `onPointer()` を実行した後、マーカー選択時の動画切替（`src` 差し替えの判定を行ってから `seekVideo()`）を行います。
+- `onPointer()` を実行した後、`applyVideoForSpot(spotPos)` を実行します。
 
 **`onNext()`**
 - `spotPos++` を実行します。上限を超えた場合は 0 に戻ります。
-- `onPointer()` を実行した後、マーカー選択時の動画切替を行います。
+- `onPointer()` を実行した後、`applyVideoForSpot(spotPos)` を実行します。
 
 **`onPointer()`**
 1. `mapService.getMarkerPosition(spotPos)` を取得します。
@@ -114,7 +186,7 @@ spotComment1..4: string
 
 **`seekVideo()`**
 - `videoElement.currentTime = mapService.getMarkerVideoTime(spotPos)` を実行します。
-- 複数ファイル化した後、この videoTime が「そのマーカーが属するファイル内のオフセット」を意味するかどうかは、Middleware 側で確認が必要です。
+- `getMarkerVideoTime()` は、そのマーカーが属するファイルの先頭を基準にした整数秒です（`floor((tVideo - segmentFrom)/1000)`）。
 
 ## 表示項目
 | 項目 | ソース | 編集 |
@@ -123,17 +195,19 @@ spotComment1..4: string
 | 選択マーカーの強調 | `setBigMarkerIcon(spotPos)` | 不可 |
 | 発生時刻 `spotTimestamp` | `mapService.getMarkerTimestamp(spotPos)` | 読み取り専用 |
 | 評価コメント `spotComment1..4` | `mapService.getMarkerComment(spotPos, 'msg1'..'msg4')` | 読み取り専用 |
-| 動画 | `videoPath`（`@` を `/` に復元）。複数ファイル時は選択マーカーの動画ファイル | 再生位置は `seekVideo()` または利用者の操作で変化。ファイルの切替はマーカー選択時のみ |
+| 動画 | 選択マーカーの `mapService.getMarkerVideoPath(spotPos)`（Android は `convertFileSrc()` で変換して `src` に設定。DemoData は `blob:` URL） | 再生位置は `seekVideo()` または利用者の操作で変化。ファイルの切替はマーカー選択時のみ |
 | ラベル `label1..4` | 設定（[[middleware.login.service]] 経由の label） | 読み取り専用 |
 
 - 本画面には、スコア値・減点値・減点量を示す表示項目はありません。
-- レーダーチャート（6 項目 5 段階）も本画面の表示対象ではありません。[[ui.result.page]] / [[ui.comment.page]] 側の責務です。
+- レーダーチャート（6 項目 5 段階）も本画面の表示対象ではありません。これは [[ui.result.page]] / [[ui.comment.page]] 側の責務です。
 - 本画面には入力・編集フォームがありません。ヒヤリ地点の追加・削除や、コメントの修正はできません。
 
 ## 業務ルール
 - **動画がない場合**
   - 動画が録画されていない診断結果でも、マーカーは辿れます。
-  - `videoPath === ''` のとき、または動画ファイルが存在しないときは、video が空になり、地図でのナビゲーションのみになります。この挙動は複数ファイル対応後も変更しません。
+  - 次のときは video が空になり、地図でのナビゲーションのみになります。この挙動は複数ファイル対応後も変更しません。
+    - 選択マーカーの動画パスが `''` のとき
+    - 動画ファイルが存在しないとき
 - **画面の向き**
   - 現行実装は縦固定です。
   - 2026 年度改修要求「縦横変更できるようにしてください」との衝突は未解決です（後述）。
@@ -163,23 +237,30 @@ spotComment1..4: string
 
 ### 遷移元の追加（1-2 前回結果表示）
 - 1-2 前回結果表示の地図上に描画される過去ヒヤリポイントをタップした場合も、本画面と同等の機能を提供します（録画動画の再生・発生日時・評価コメントの表示）。この動作は「従来通り」と確定しています。
-- 本画面へ遷移する画面は、次の 2 つを事前に設定する責務を持ちます。1-2 からの遷移でも、同じ契約を満たす必要があります。
-  - `mapService.getSelectMarkerPos()`（選択位置）
-  - マーカー集合（複数ファイル時は、各マーカーの動画ファイル対応を含みます）
-- 1-2 は過去の複数回の診断分のヒヤリを表示し得ます。そのため、マーカー集合が複数の動画ファイルにまたがる前提になります。この場合も、上記の複数動画ファイル対応の規則で巡回します。
-- 1-2 に表示する過去ヒヤリの件数（直近何回分に限るか）は未確定です。件数制限が入る場合、本画面の前/次ボタンによるリング巡回の対象範囲も、1-2 が渡したマーカー集合に限られます。
+- 本画面へ遷移する画面は、次の責務を持ちます。1-2 からの遷移でも、同じ契約を満たす必要があります。
+  - `mapService.getSelectMarkerPos()`（選択位置）を設定すること。
+  - マーカー集合を設定すること。各マーカーの動画ファイルは、`drawMarker()` 第 5 引数の `file://` フルパスとして保持します。
+  - ルート `/bad-spot/:path` の `:path` にダミー `'-'` を渡すこと。
+- 1-2 は過去の複数回の診断分のヒヤリを表示し得ます。そのため、マーカー集合が複数の動画ファイルにまたがる前提になります。
+  - この場合も、上記の複数動画ファイル対応の規則で巡回します。
+- 1-2 に表示する過去ヒヤリの件数（直近何回分に限るか）は未確定です。
+  - 件数制限が入る場合、本画面の前/次ボタンによるリング巡回の対象範囲も、1-2 が渡したマーカー集合に限られます。
 
 ### 録画動画の粒度（ヒヤリ前後の個別動画化）
 - ⑤の改善方針では、ヒヤリの前後（既定 15 秒）を対象とした録画が想定されています。
-- 連続ヒヤリ（30 秒以内）の場合は、1 本に継続して録画しても、ヒヤリポイントごとに個別に生成してもかまいません（承認済みファクト）。満たすべき要件は次の 2 点です。
+- 要求上は、連続ヒヤリ（30 秒以内）の場合、1 本に継続して録画しても、ヒヤリポイントごとに個別に生成してもかまいません（承認済みファクト）。満たすべき要件は次の 2 点です。
   - ヒヤリ時の動画が見られること
   - ヒヤリポイントごとに、個別に動画を確認できること
-- 本画面の再生方式は、承認済みファクト「6-1 ヒヤリシーン表示の複数ファイル対応」で確定しています（「複数動画ファイル対応」節を参照）。
-  - 1 本の動画に複数のマーカーが含まれる場合（通し動画、または連続ヒヤリの継続録画）は、そのファイル内で自動追尾とシークを行います。
+- 録画側の設計では **ヒヤリごとに必ず新しい `hiyari.NN.webm` を開く** ことが確定しています。
+  - 区間が重なる場合は、複数ファイルへ同時に書き込みます。
+  - このため Android 実機では、原則としてマーカー 1 件に動画 1 本が対応し、マーカーを選択するたびに `src` を差し替えます。
+- 本画面の再生方式は、承認済みファクト「6-1 ヒヤリシーン表示の複数ファイル対応」で確定しています。
+  - 1 本の動画に複数のマーカーが属する場合（通し動画など）は、そのファイル内で自動追尾とシークを行います。
   - マーカー 1 件に動画 1 本が対応する場合は、マーカーを選択するたびに `src` を差し替えます。
-- 再生方式はこれで確定しましたが、次の点は未確定です。
-  - 各マーカーの動画ファイルをどう保持・参照するか（マーカー契約）
-  - `videoTime` の基準（ファイル内オフセットかどうか）
+- 確定した事項
+  - マーカーごとの動画ファイルの参照方法：`getMarkerVideoPath(pos)` の `file://` フルパス
+  - `videoTime` の基準：ファイル先頭を基準にした整数秒
+- 未確定の事項
   - 録画の前後時間（既定 15 秒）を設定で可変にするかどうか。可変になった場合も、変わるのは本画面の動画尺だけで、表示項目の構成は変わらない想定です。
 
 ### 画面の向き
@@ -187,8 +268,12 @@ spotComment1..4: string
 - 本画面を回転対応にするか、横向き時に地図・動画・コメントをどう配置するかは未確定です。
 
 ## 未確定事項（本画面に関わるもの）
-- 複数ファイル化した後に、マーカーごとの動画ファイルパスを `mapService` がどう提供するか、またルートパラメータ `:path` の意味（初期表示ファイル）。
-- 複数ファイル時の `getMarkerVideoTime()` の基準（ファイル内オフセットか）。
+- `applyVideoForSpot()` で `currentTime = 1e101` へシークした後の手順。
+  - 実長が確定したこと（`durationchange` などのイベント）を待ってから `seekVideo()` を行うかどうか。
+  - 待機中の表示をどうするか。
+- 1-2 から遷移する場合の、過去診断のマーカーの動画フルパスの復元方法。
+  - 過去診断の `saveDirectoryPath` を含むフルパスを、どこから再構築するか。
+- DemoData の `blob:` URL の生成元と解放タイミング。
 - 1-2 に表示する過去ヒヤリの件数上限。
 - 録画の前後時間を可変にするかどうか。
 - 縦横回転対応の有無と、横向き時のレイアウト。
@@ -196,57 +281,70 @@ spotComment1..4: string
 - ヒヤリ地点が 0 件の場合の遷移可否と、空状態の表示。
 
 ## 関連ノード
-- 依存: [[middleware.map.service]] / [[middleware.login.service]] / [[middleware.log.service]]
+- 依存: [[middleware.map.service]]（`drawMarker()` 第 5 引数 / `markersVideoPath` / `getMarkerVideoPath()` / `getMarkerVideoTime()`） / [[middleware.login.service]] / [[middleware.log.service]]
 - 遷移元: [[ui.driving.page]]（現行） / 1-2 前回結果表示（改修で追加予定、[[ui.opening.page]] 系）
-- 参照: [[middleware.score-logicCan]]（ヒヤリ判定がスコアを変更しないこと）
+- 参照: [[middleware.score-logicCan]]（ヒヤリ判定がスコアを変更しないこと） / 録画側設計判断（`hiyari.NN.webm`、`markersVideoTime` のファイル先頭基準、Duration 非書き込み）
 
 ```json
 {
   "required_changes": [
-    {"node": "ui.badspot.page", "entrypoint": "spec/ui/badspot-page.md", "description": "承認済みファクト『6-1 ヒヤリシーン表示の複数ファイル対応』を反映し、マーカー選択時の src 差し替え/seek 規則・自動追尾の同一ファイル限定・リング巡回の全マーカー対象・差し替え後の autoplay=false/loop=false/muted=true 維持・動画ファイル不在時の現行維持を追記し、個別動画時の再生方式未確定の記述を確定内容に改訂"}
+    {"node": "ui.badspot.page", "entrypoint": "spec/ui/badspot-page.md", "description": "動画パスの取得をルートパラメータ（@→/ 復元）から getMarkerVideoPath(pos) に変更し、/bad-spot/:path はダミー '-' を受けるだけで参照しないことを明記する"},
+    {"node": "ui.badspot.page", "entrypoint": "spec/ui/badspot-page.md", "description": "videoPath・同一ファイル判定・getMarkerVideoPath() を file:// フルパスのまま保ち、src 設定直前だけ Capacitor.convertFileSrc() で変換すること、DemoData では blob: URL を無変換で使うことを追記する"},
+    {"node": "ui.badspot.page", "entrypoint": "spec/ui/badspot-page.md", "description": "マーカー選択時の動画切替を applyVideoForSpot(pos) に集約する。文字列比較で同一ファイルを判定し、差し替え時は currentTime=1e101 のシークで実長を確定させてから seekVideo() を行う"},
+    {"node": "ui.badspot.page", "entrypoint": "spec/ui/badspot-page.md", "description": "videoTime をファイル先頭基準の整数秒（floor((tVideo - segmentFrom)/1000)）として記述し、ヒヤリごとの hiyari.NN.webm 構成を前提として反映する。解消済みの未確定事項（:path の意味・videoTime 基準・マーカー動画パス提供方法）を削除する"}
   ],
   "suggested_impacts": [
-    {"domain": "Middleware-agent", "severity": "must", "reason": "複数ファイル対応では map.service がマーカーごとの動画ファイルパスを提供する必要があり、現行の videoPath 単一 + videoTime オフセットのマーカー契約を再定義し videoTime の基準（ファイル内オフセット）を明確化する必要がある"},
-    {"domain": "UI-agent", "severity": "must", "reason": "1-2 前回結果表示から本画面へ遷移する際、getSelectMarkerPos とマーカー集合（各マーカーの動画ファイル対応を含む）を設定する契約を 1-2 側仕様に明記する必要がある"},
-    {"domain": "Middleware-agent", "severity": "should", "reason": "録画前後時間（既定15秒）の可変化と連続ヒヤリの1本／個別生成の選択が本画面の動画尺・ファイル数に直結する"},
-    {"domain": "QA-agent", "severity": "should", "reason": "ファイル跨ぎのリング巡回時の src 差し替え、同一ファイル時の seek のみ、自動追尾がファイルを跨がないこと、差し替え後も自動再生しないこと、動画ファイル不在時の現行挙動維持が新たな確認観点となる"},
-    {"domain": "Infra-agent", "severity": "could", "reason": "動画ファイル数増加に伴う保存パス命名規則とストレージ容量方針の確認が望ましい"}
+    {"domain": "UI-agent", "severity": "must", "reason": "ui.driving.page と 1-2 前回結果表示は /bad-spot/:path にダミー '-' を渡すよう変更し、getSelectMarkerPos とフルパス付きマーカー集合を事前に設定する契約を各仕様に明記する必要がある"},
+    {"domain": "Middleware-agent", "severity": "must", "reason": "map.service は drawMarker() 第5引数のフルパスを markersVideoPath に file:// のまま保持し、getMarkerVideoPath(pos) で返す契約と、getMarkerVideoTime() がファイル先頭基準の整数秒を返すことを保証する必要がある"},
+    {"domain": "Middleware-agent", "severity": "should", "reason": "1-2 で過去診断のヒヤリを表示する場合に、各診断の saveDirectoryPath を含む動画フルパスをどこから再構築するかを定義する必要がある"},
+    {"domain": "QA-agent", "severity": "should", "reason": "convertFileSrc 変換後の再生、DemoData の blob: URL 再生、Duration 未記録の webm に対する 1e101 シークでの実長確定、区間重複時の複数ファイル、ファイル跨ぎ巡回、同一ファイル時の seek のみ、自動追尾がファイルを跨がないこと、差し替え後も自動再生しないこと、動画ファイル不在時の現行挙動維持が確認観点となる"},
+    {"domain": "Middleware-agent", "severity": "should", "reason": "録画前後時間（既定15秒）を可変にするかどうかが本画面の動画尺に直結する"},
+    {"domain": "Infra-agent", "severity": "could", "reason": "hiyari.NN.webm の増加と区間重複による重複保存に伴い、保存パス命名とストレージ容量方針の確認が望ましい"}
   ],
-  "requirements_context": "UC08:ヒヤリ地点確認（画面6-1 / ui.badspot.page / spec/ui/badspot-page.md）。/bad-spot/:path（:path は動画パスの / を @ に置換した文字列）で記録されたヒヤリ地点を動画と地図で1点ずつ確認する閲覧専用画面。ngOnInit でパスを @→/ 復元し label1..4 を反映、ionViewWillEnter で Android のみ PORTRAIT 固定、ionViewDidEnter で loadMap()+loadVideo()、ionViewWillLeave で 300ms タイマ解除と mapService.stop()（マーカーは残す）。loadMap は mapService.getSelectMarkerPos() で遷移元が設定した選択位置を復帰し、そのマーカー位置を中心に地図生成、clearCarMarker、mark リスナでマーカータップ選択。loadVideo は autoplay=false/loop=false/muted=true、videoPath があれば src 設定、seekVideo、300ms 周期で currentTime を監視し getMarkerVideoTime(pos)<=currentTime を満たす最後の pos を選択（変化時のみ onPointer）。onBack/onNext は spotPos をリング状に前後移動。onPointer は選択マーカーを hiyar_big.png、他を hiyari.png に切替、setCenter+setZoom(16)、spotTimestamp と spotComment1..4（msg1..msg4）を反映。seekVideo は currentTime=getMarkerVideoTime(spotPos)。承認済みファクト『6-1 ヒヤリシーン表示の複数ファイル対応』により、マーカー選択時（地図タップ / onBack() / onNext()）は動画ファイルが現在の src と異なれば src を差し替えてから seekVideo()、同一ファイルなら seek のみ行う。300ms 周期の currentTime 自動追尾は同一ファイル内のマーカーに限定し、ファイルを跨ぐ自動遷移は行わない。前後ボタンのリング巡回は全マーカーを対象とし、ファイルを跨ぐ場合は src 差し替えを伴う。差し替え後も autoplay=false/loop=false/muted=true を維持する。動画ファイルが存在しない場合の挙動は現行のまま（動画領域は空、地図巡回のみ）変更しない。承認済みファクトによりヒヤリ判定は scoreLogicFunction.txt L843-845 で result.hiyari=true とメッセージのみを設定しスコア値を変更しないため、本画面はスコア値・減点量・レーダーチャートを表示せず、入力編集フォームも持たず、UI 文言でヒヤリを減点として説明してはならない。2026年度改修要求（日産『運転機能チェックアプリの一次仕様』2026-08-04 / メイサンソフト『要求仕様確認』2026-09-17、2026年11月末完了目標、12月実験開始）に関し、1-2 前回結果表示の地図上ヒヤリポイントをタップした時の動作は従来通り（録画動画の再生、発生日時および評価コメントの表示）と確定し、1-2 も遷移元として選択位置とマーカー集合（各マーカーの動画ファイル対応を含む）の設定責務を負う。⑤録画データサイズ改善によりヒヤリ前後（既定15秒）の録画が想定され、連続ヒヤリ（30秒以内）は1本継続録画でも個別生成でもよいが、ヒヤリ時の動画が見られることと個別にヒヤリポイントの動画を確認できることは必須。マーカーごとの動画ファイル保持方式・:path の意味・複数ファイル時の videoTime 基準・録画前後時間の可変化・1-2 の過去ヒヤリ件数上限・縦横回転対応（現行PORTRAIT固定）・msg1..4 の意味・ヒヤリ0件時の空状態は未確定。",
+  "requirements_context": "UC08:ヒヤリ地点確認（画面6-1 / ui.badspot.page / spec/ui/badspot-page.md）。記録されたヒヤリ地点を動画と地図で1点ずつ確認する閲覧専用画面。ルート /bad-spot/:path は残すが遷移元はダミー '-' を渡し、本画面は :path を参照しない（従来の @→/ 復元は使わない）。ngOnInit は label1..4 の反映のみ、ionViewWillEnter で Android のみ PORTRAIT 固定、ionViewDidEnter で loadMap()+loadVideo()、ionViewWillLeave で 300ms タイマ解除と mapService.stop()（マーカーは残す）。loadMap は mapService.getSelectMarkerPos() で遷移元が設定した選択位置を復帰し、そのマーカー位置を中心に地図を生成、clearCarMarker を行い、mark リスナでマーカータップを受けて onPointer と applyVideoForSpot を実行する。loadVideo は autoplay=false/loop=false/muted=true を設定して applyVideoForSpot(spotPos) で初期動画を設定し、300ms 周期で currentTime を監視して、現在 videoPath と同一ファイルのマーカーのみを対象に getMarkerVideoTime(pos)<=currentTime を満たす最後の pos を選択する（変化時のみ onPointer、src 差し替えなし、ファイル跨ぎの自動遷移なし）。動画パス契約：pushBadPoint() が saveDirectoryPath とファイル名を結合したフルパスを drawMarker() 第5引数に渡し、bad-spot.page は getMarkerVideoPath(pos) をそのまま使う。markersVideoPath・同一ファイル判定・getMarkerVideoPath() の戻り値は file:// フルパスのまま保ち、同一ファイル判定は選択マーカーのパスと現在の videoPath の文字列比較で行う。src 設定直前だけ Capacitor.convertFileSrc() で https://localhost/_capacitor_file_/... に変換し、非 Android（DemoData）では変換せず blob: URL を使う。applyVideoForSpot(pos) は、パスが異なれば videoPath を更新して src を差し替え、Duration 未記録のため currentTime=1e101 へのシークで実長を確定してから seekVideo() を行い、同一なら seek のみ行う。差し替え後も autoplay=false/loop=false/muted=true を維持する。前後ボタンのリング巡回は全マーカーが対象で、ファイルを跨ぐ場合は src を差し替える。動画ファイル不在時は現行通り動画領域が空で地図巡回のみ可能。onPointer は選択マーカーを hiyar_big.png、他を hiyari.png にし、setCenter+setZoom(16)、spotTimestamp と spotComment1..4（msg1..msg4）を読み取り専用で反映する。seekVideo は currentTime=getMarkerVideoTime(spotPos) で、videoTime はマーカーが属するファイル先頭基準の整数秒（floor((tVideo - segmentFrom)/1000)）。録画側はヒヤリごとに必ず新しい hiyari.NN.webm を開き、区間重複時は複数ファイルへ同時に書き込み、Duration は書き込まない。ヒヤリ判定は scoreLogicFunction.txt L843-845 で result.hiyari=true とメッセージのみを設定しスコアを変更しないため、本画面はスコア値・減点量・レーダーチャートを表示せず、入力編集フォームも持たず、UI 文言でヒヤリを減点として説明してはならない。2026年度改修要求（日産『運転機能チェックアプリの一次仕様』2026-08-04 / メイサンソフト『要求仕様確認』2026-09-17、2026年11月末完了目標、12月実験開始）に関し、1-2 前回結果表示の地図上ヒヤリポイントをタップした時の動作は従来通り（録画動画の再生、発生日時および評価コメントの表示）と確定しており、1-2 も遷移元として選択位置・フルパス付きマーカー集合の設定とダミー '-' の受け渡しの責務を負う。⑤録画データサイズ改善ではヒヤリ前後（既定15秒）の録画が想定され、要求上は連続ヒヤリ（30秒以内）を1本継続録画しても個別生成してもよいが、ヒヤリ時の動画が見られることと個別にヒヤリポイントの動画を確認できることは必須。未確定：1e101 シーク後の待機手順と待機中表示、1-2 での過去診断動画フルパスの復元方法、DemoData の blob: URL の生成・解放、1-2 の過去ヒヤリ件数上限、録画前後時間の可変化、縦横回転対応（現行 PORTRAIT 固定）、msg1..4 の意味、ヒヤリ0件時の空状態。",
   "fact_candidates": [
-    {"type": "display_rule", "title": "ヒヤリポイントタップ時の提供機能は録画動画再生・発生日時・評価コメントの3点", "statement": "地図上のヒヤリポイントをタップした際、本画面は録画動画の再生、発生日時の表示、評価コメントの表示を行い、1-2 前回結果表示からのタップでも同じ動作とする", "status": "approved"},
+    {"type": "display_rule", "title": "ヒヤリポイントタップ時の提供機能は録画動画再生・発生日時・評価コメントの3点", "statement": "地図上のヒヤリポイントをタップした際、録画動画の再生、発生日時の表示、評価コメントの表示を行い、1-2 前回結果表示からのタップでも同じ動作とする", "status": "approved"},
     {"type": "state_rule", "title": "マーカー選択時に動画ファイルが異なれば src を差し替えてから seek する", "statement": "地図タップ・onBack()・onNext() によるマーカー選択時、選択マーカーの動画ファイルが現在の src と異なれば src を差し替えてから seekVideo() を行い、同一ファイルなら seek のみ行う", "status": "approved"},
-    {"type": "state_rule", "title": "自動追尾は同一動画ファイル内に限定される", "statement": "300ms 周期の currentTime 自動追尾は現在の src と同一ファイルのマーカーのみを対象とし、ファイルを跨ぐ自動遷移は行わない", "status": "approved"},
+    {"type": "state_rule", "title": "自動追尾は同一動画ファイル内に限定される", "statement": "300ms 周期の currentTime 自動追尾は現在の動画ファイルに属するマーカーのみを対象とし、ファイルを跨ぐ自動遷移は行わない", "status": "approved"},
     {"type": "state_rule", "title": "前後ボタンのリング巡回は全マーカーを対象とする", "statement": "onBack()/onNext() のリング巡回は全マーカーを対象とし、ファイルを跨ぐ場合は src 差し替えを伴う", "status": "approved"},
     {"type": "display_rule", "title": "src 差し替え後も非自動再生・ループなし・ミュートを維持する", "statement": "動画 src を差し替えた後も videoElement は autoplay=false、loop=false、muted=true を維持する", "status": "approved"},
     {"type": "display_rule", "title": "動画ファイル不在時の挙動は現行維持", "statement": "動画ファイルが存在しない場合、動画領域は空で地図上のヒヤリ地点巡回のみ可能という現行挙動を変更しない", "status": "approved"},
-    {"type": "display_rule", "title": "ヒヤリ地点確認画面はスコア値・減点量・レーダーチャートを表示しない", "statement": "/bad-spot/:path 画面は選択ヒヤリ地点の位置・発生時刻・評価コメント・動画のみを表示し、スコア値や減点量、レーダーチャートを表示しない", "status": "candidate"},
-    {"type": "constraint", "title": "遷移元は選択マーカー位置とマーカー集合を事前に設定する", "statement": "本画面は loadMap() で mapService.getSelectMarkerPos() を初期 spotPos として読み取るため、遷移元画面（ui.driving.page / 1-2）が選択位置とマーカー集合を設定していなければならない", "status": "candidate"},
+    {"type": "state_rule", "title": "本画面はルートパラメータ :path を参照しない", "statement": "ルート /bad-spot/:path は残すが、遷移元はダミー '-' を渡し、bad-spot.page は :path を動画パスの決定に使わない", "status": "approved"},
+    {"type": "state_rule", "title": "再生する動画は getMarkerVideoPath(pos) で決まる", "statement": "bad-spot.page は選択マーカーの mapService.getMarkerVideoPath(pos) をそのまま再生対象の動画パスとして使う", "status": "approved"},
+    {"type": "state_rule", "title": "同一ファイル判定は file:// フルパスの文字列比較", "statement": "同一ファイル判定は、選択マーカーの getMarkerVideoPath(pos) と現在の videoPath を、いずれも変換前の file:// フルパスのまま文字列比較して行う", "status": "approved"},
+    {"type": "display_rule", "title": "src 設定直前にのみ convertFileSrc で変換する", "statement": "Android では videoElement.src を設定する直前だけ Capacitor.convertFileSrc() で https://localhost/_capacitor_file_/... に変換し、非 Android（DemoData）では変換せず blob: URL を使う", "status": "approved"},
+    {"type": "state_rule", "title": "src 差し替え時は 1e101 シークで実長を確定させる", "statement": "動画ファイルに Duration が書かれていないため、bad-spot の applyVideoForSpot() は currentTime=1e101 へのシークで動画の実長を確定させる", "status": "approved"},
+    {"type": "data_semantics", "title": "マーカーの videoTime はファイル先頭基準の整数秒", "statement": "getMarkerVideoTime() が返す値は、そのマーカーが属する動画ファイルの先頭を基準とした floor((tVideo - segmentFrom)/1000) 秒であり、seekVideo() でそのまま currentTime に設定する", "status": "candidate"},
+    {"type": "state_rule", "title": "マーカー選択時の動画設定は applyVideoForSpot に集約される", "statement": "初期表示・地図タップ・onBack()・onNext() のいずれでも、onPointer() の後に applyVideoForSpot(spotPos) を呼んで動画の差し替え判定とシークを行う", "status": "candidate"},
+    {"type": "display_rule", "title": "ヒヤリ地点確認画面はスコア値・減点量・レーダーチャートを表示しない", "statement": "ヒヤリ地点確認画面は選択ヒヤリ地点の位置・発生時刻・評価コメント・動画のみを表示し、スコア値や減点量、レーダーチャートを表示しない", "status": "candidate"},
+    {"type": "constraint", "title": "遷移元は選択マーカー位置とフルパス付きマーカー集合を事前に設定する", "statement": "本画面は mapService.getSelectMarkerPos() と getMarkerVideoPath(pos) を読み取るため、遷移元画面（ui.driving.page / 1-2）が選択位置と動画フルパス付きのマーカー集合を設定していなければならない", "status": "candidate"},
     {"type": "display_rule", "title": "選択中マーカーは大アイコンで強調され地図中心・ズーム16に設定される", "statement": "onPointer() は選択中マーカーを hiyar_big.png、非選択マーカーを hiyari.png にし、地図中心を選択マーカー位置、ズームを 16 に設定する", "status": "candidate"},
     {"type": "display_rule", "title": "選択マーカーの発生時刻と評価コメント4件が表示される", "statement": "画面は spotTimestamp に getMarkerTimestamp(spotPos)、spotComment1..4 に getMarkerComment(spotPos,'msg1'..'msg4') を読み取り専用で表示する", "status": "candidate"},
     {"type": "input_rule", "title": "ヒヤリ地点情報は編集できない", "statement": "利用者は本画面でヒヤリ地点の発生時刻・評価コメント・位置を追加・編集・削除できない", "status": "candidate"},
     {"type": "constraint", "title": "現行の画面向きは縦固定", "statement": "Android では ionViewWillEnter で screenOrientation.lock(PORTRAIT) により本画面を縦向きに固定する（現行実装）", "status": "candidate"},
     {"type": "state_rule", "title": "離脱時に監視タイマとマップは停止するがマーカーは保持する", "statement": "ionViewWillLeave() で 300ms タイマを clearInterval し mapService.stop() を実行するが、マーカーは破棄しない", "status": "candidate"},
     {"type": "business_rule", "title": "ヒヤリ判定はスコア値を変更しない", "statement": "ヒヤリ判定は result.hiyari=true とメッセージのみを設定し、スコア値の加減算を行わない（scoreLogicFunction.txt L843-845）", "status": "approved"},
-    {"type": "business_rule", "title": "個別にヒヤリポイントの動画を確認できることが要件", "statement": "連続ヒヤリの録画を1本にまとめるか個別生成するかは実装都合で選べるが、ヒヤリ時の動画が見られること、および個別にヒヤリポイントの動画を確認できることは満たさなければならない", "status": "approved"}
+    {"type": "business_rule", "title": "個別にヒヤリポイントの動画を確認できることが要件", "statement": "連続ヒヤリの録画を1本にまとめるか個別生成するかは要求上どちらでもよいが、ヒヤリ時の動画が見られること、および個別にヒヤリポイントの動画を確認できることは満たさなければならない", "status": "approved"}
   ],
   "open_questions": [
-    "複数ファイル対応でマーカーごとの動画ファイルパスを map.service がどう保持・提供するか、およびルートパラメータ :path が何を指すか（初期選択マーカーの動画か）が未確定。src 差し替え判定の入力となるため Middleware の判断が必要で、決まらないと実装契約を確定できない。",
-    "複数ファイル時に getMarkerVideoTime() が各ファイル内オフセットを返すかが未確定。seekVideo の位置と同一ファイル内自動追尾の走査基準に直結するため Middleware の確認が必要。",
-    "1-2 前回結果表示に描画する過去ヒヤリの件数上限が未確定。件数制限が入ると本画面のリング巡回範囲が遷移元のマーカー集合に限定されるため、UI(1-2)と Middleware/DB の判断が必要。",
-    "録画の前後時間（既定15秒）を設定で可変にするかが未確定。動画尺とシーク基準に影響し、Middleware/Infra の判断が必要。",
+    "applyVideoForSpot() で currentTime=1e101 へシークした後、実長の確定（durationchange 等のイベント）を待ってから seekVideo() を行うか、待機中に動画領域をどう表示するかが未確定。承認済み事実はシークで実長を確定させることのみを定めているため、UI と QA の判断が必要。決まらないと、初回選択時にシーク位置がずれたり末尾フレームが一瞬表示されたりするリスクを評価できない。",
+    "1-2 前回結果表示から遷移する場合に、過去診断のマーカーの動画フルパス（各診断の saveDirectoryPath + ファイル名）をどこから再構築して drawMarker() 第5引数に渡すかが未確定。現行の pushBadPoint() は走行中の登録経路のため、Middleware/DB の判断が必要。決まらないと 1-2 経由で動画を再生できない。",
+    "非 Android（DemoData）で使う blob: URL の生成元と解放（revoke）タイミングが UI から断定できない。Middleware（map.service / DemoData）の確認が必要で、決まらないとデモ時の画面遷移を繰り返した際の挙動を規定できない。",
+    "1-2 前回結果表示に描画する過去ヒヤリの件数上限が未確定。件数制限が入ると本画面のリング巡回範囲が遷移元のマーカー集合に限定されるため、UI(1-2) と Middleware/DB の判断が必要。",
+    "録画の前後時間（既定15秒）を設定で可変にするかが未確定。動画尺に影響するため、Middleware/Infra の判断が必要。",
     "本画面を縦横回転対応にするかが未確定。先方要求は縦横変更可だが現行は PORTRAIT 固定で、横向き時の地図・動画・評価コメントのレイアウトも未定義。UI 全体方針として確定が必要。",
     "評価コメント msg1..msg4 の各枠の意味・表示順・未設定時の扱いが UI から断定できない。Middleware（score-logicCan / map.service）の確認が必要で、決まらないとコメント欄の空表示ルールを規定できない。",
     "ヒヤリ地点が0件の診断結果で本画面へ遷移し得るか、その場合の空状態表示（前後ボタン無効化・メッセージ）が未定義。遷移元と Middleware の判断が必要。",
-    "画面内の見出し・ラベル文言（label1..4 を含む）でヒヤリを減点・失点として説明している箇所があるかが資料から確認できない。承認済みファクトと矛盾する文言があれば修正対象となるため実 HTML と設定 label の確認が必要。"
+    "画面内の見出し・ラベル文言（label1..4 を含む）でヒヤリを減点・失点として説明している箇所があるかが資料から確認できない。承認済みファクトと矛盾する文言があれば修正対象となるため、実 HTML と設定 label の確認が必要。"
   ],
   "rationale_notes": [
-    "承認済みファクト『6-1 ヒヤリシーン表示の複数ファイル対応』により、既存 spec で未確定としていた個別動画時の再生方式（src 差し替え・自動追尾の扱い・前後ボタンの挙動・再生状態）が確定したため、facts を真として該当記述を改訂し専用節を設けた。",
-    "自動追尾を同一ファイル内に限定しファイル跨ぎの自動遷移を行わない方針は、利用者の意図しない動画切替を避け、差し替えを明示的な選択操作のみに限定する意図と解釈される。",
-    "マーカー選択時は onPointer() による地図・コメント更新の後に動画切替を行う順序で記述したが、順序自体は既存実装（onPointer + seekVideo）の踏襲である。",
-    "マーカーごとの動画ファイル保持方式や videoTime 基準は UI から断定できないため、再生規則のみを確定とし、データ契約は open_questions に残した。",
-    "レーダーチャートやスコア表示は結果表示/アドバイス画面の責務であり、本画面では扱わないことを維持した。",
-    "既存 spec 末尾に埋め込まれていた JSON ブロックは仕様書本文ではないため本文から除去した。"
+    "承認済み設計判断により動画パスはマーカー単位のフルパスで提供されることになったため、既存 spec の :path（@→/ 復元）前提の記述を改め、:path はダミー受け渡しのみとした。",
+    "同一ファイル判定を file:// のまま行い、変換を src 設定直前に限定する方針は、変換後 URL と保持値が混在して比較が崩れることを避ける意図と解釈される。",
+    "共通の承認済み設計判断のうち、markersVideoTime をセンサー時計のまま据え置く判断は後続の判断（ファイル先頭基準化、#4709/#4705/#4742 の一部撤回）で置き換えられ、Duration 書き込みも後続判断（#262 撤回）で撤回されたと解釈し、最新の判断（ファイル先頭基準の整数秒、Duration 非書き込み + 1e101 シーク）を採用した。",
+    "1e101 シークは Duration が無い webm を読み込んだとき、すなわち src 差し替え時に必要な処理として applyVideoForSpot() 内の差し替え分岐に置いた。同一ファイル時は実長が既に確定しているため行わない構成としたが、これは spec 上の設計で、ファクトとしては candidate 扱いとしている。",
+    "マーカー選択時の処理は、地図タップ・前後ボタン・初期表示の重複を避けるため applyVideoForSpot() に集約した。onPointer() の後に動画処理を行う順序は既存実装の踏襲である。",
+    "ヒヤリごとに個別ファイルを作る設計が確定したため、Android 実機では原則として 1 マーカー 1 ファイルとなる。ただし、同一ファイル内の自動追尾規則は通し動画などのケースのために残した。",
+    "レーダーチャートやスコア表示は結果表示/アドバイス画面の責務であり、本画面では扱わない方針を維持した。"
   ]
 }
 ```
