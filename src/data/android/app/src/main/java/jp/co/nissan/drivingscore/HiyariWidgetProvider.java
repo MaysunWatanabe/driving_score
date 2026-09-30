@@ -3,6 +3,7 @@ package jp.co.nissan.drivingscore;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
@@ -32,6 +33,33 @@ public class HiyariWidgetProvider extends AppWidgetProvider {
         for (int appWidgetId : appWidgetIds) {
             appWidgetManager.updateAppWidget(appWidgetId, buildRemoteViews(context));
         }
+    }
+
+    /**
+     * 配置済みのウィジェットをすべて描き直す（proposal #303 §3）
+     *
+     * HiyariWidgetPlugin が SharedPreferences へ書いた直後に呼ぶ。
+     * updatePeriodMillis=0（fact #4760）のため、ここで起こさないと
+     * ランチャーが再描画するまで表示は変わらない。
+     *
+     * updateAppWidget() を直接呼ばず ACTION_APPWIDGET_UPDATE を投げるのは、
+     * 描画経路を onUpdate() の 1 本に保つため。深夜 0 時のアラーム
+     * （proposal #304）も同じ経路を通る。
+     *
+     * release ビルドでは receiver が宣言されていない（fact #4761）ので
+     * getAppWidgetIds() が空を返し、何もせずに戻る。
+     */
+    public static void refreshAll(Context context) {
+        ComponentName provider = new ComponentName(context, HiyariWidgetProvider.class);
+        int[] appWidgetIds = AppWidgetManager.getInstance(context).getAppWidgetIds(provider);
+        if (appWidgetIds == null || appWidgetIds.length == 0) {
+            return;
+        }
+
+        Intent intent = new Intent(context, HiyariWidgetProvider.class);
+        intent.setAction(AppWidgetManager.ACTION_APPWIDGET_UPDATE);
+        intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, appWidgetIds);
+        context.sendBroadcast(intent);
     }
 
     /**
