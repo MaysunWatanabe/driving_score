@@ -1,16 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ヒヤリ表示ウィジェット 2-1a のレイアウト（proposal #303 §5）
+  ヒヤリ表示ウィジェット 2-1a のレイアウト（fact #4765 / proposal #306 / #307）
 
   左にアイコン、右に情報を置く横並び。背景は白固定で、状態はアイコンと
-  文字色で表す。骨組み（proposal #298）の縦 3 行から差し替えた。
+  文字色で表す。
+
+  右カラムは 日付 → ラベル → 件数 の順（proposal #307）。上から
+  「2026/9/30 の / 今日のヒヤリ / 4 件」と素直に読める並びにする。
+
+  1 行目は「この件数が対象とする日」で、描画時点の端末ローカル日付を
+  常に出す（proposal #306）。最終更新時刻を出して本日以外は隠す方式
+  （fact #4767）は撤回した。どの状態でも 3 行で一定になる。
 
   表示値は HiyariWidgetProvider が実行時に流し込む。ここで固定文字列を
   持つのはラベルだけ（常に「今日のヒヤリ」）。
-
-  日時行は「最終更新時刻」で、本日の更新が無いときは Provider が
-  View.GONE で隠す（proposal #305）。そのとき 2 行になるため、
-  右カラムは縦中央揃えにしてアイコンとの位置関係を保つ。
 
   RemoteViews は TextView / ImageView / LinearLayout 等しか扱えない。
 -->
@@ -38,9 +41,17 @@
         android:orientation="vertical">
 
         <TextView
+            android:id="@+id/widget_hiyari_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#666666"
+            android:textSize="11sp" />
+
+        <TextView
             android:id="@+id/widget_hiyari_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
             android:text="@string/widget_hiyari_title"
             android:textColor="#1A1A1A"
             android:textSize="13sp" />
@@ -53,14 +64,6 @@
             android:textColor="#2E7D32"
             android:textSize="32sp"
             android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/widget_hiyari_datetime"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:textColor="#666666"
-            android:textSize="11sp" />
 
     </LinearLayout>
 

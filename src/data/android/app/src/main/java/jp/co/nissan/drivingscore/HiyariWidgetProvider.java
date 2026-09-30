@@ -9,7 +9,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
-import android.view.View;
 import android.widget.RemoteViews;
 
 import java.text.SimpleDateFormat;
@@ -18,7 +17,7 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * ヒヤリ表示ウィジェット 2-1a（proposal #303 / #304 / #305）
+ * ヒヤリ表示ウィジェット 2-1a（fact #4765 / #4766 / proposal #304 / #306 / #307）
  *
  * 本日のヒヤリ件数をホーム画面に出す。先方へ「こんな感じでどうですか」と
  * 見せるためのプロトタイプで、色・文言・アイコンは提案であり確定仕様ではない
@@ -48,8 +47,8 @@ public class HiyariWidgetProvider extends AppWidgetProvider {
     /** 1 件以上のときの色。既存アプリの紺（proposal #303 §5） */
     private static final int COLOR_ALERT = 0xFF0B2D5B;
 
-    /** 日時行の書式（proposal #303 §5 のモック「9/30 (火) 15:41」に合わせる） */
-    private static final String DATETIME_PATTERN = "M/d (E) HH:mm";
+    /** 日付行の書式（proposal #306。曜日も時刻も付けない） */
+    private static final String DATE_PATTERN = "yyyy/M/d";
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
@@ -124,8 +123,13 @@ public class HiyariWidgetProvider extends AppWidgetProvider {
      * 0 件として描く（proposal #304）。SharedPreferences 側は書き換えない。
      * 翌日以降にアプリが上書きするため、描いた瞬間さえ正しければよい。
      *
-     * 日時行は「最終更新時刻」。本日の更新が無ければ行ごと隠す（proposal #305）。
-     * 未走行時は updatedAt=0 なので、そのまま整形すると 1970 年が出てしまう。
+     * 1 行目の日付は「この件数が対象とする日」で、updatedAt ではなく描画時点の
+     * 端末ローカル日付を常に出す（proposal #306）。描いた瞬間の本日そのものなので
+     * 件数と食い違わず、隠す必要も無い。
+     *
+     * 最終更新時刻を出して本日以外は行ごと隠す方式（fact #4767）は撤回した。
+     * あれは利用者の判断材料ではなく実装の都合で、かつ「昨日の時刻の下に今日の
+     * 0 件」が並ぶ矛盾の原因になっていた。
      */
     private static RemoteViews buildRemoteViews(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(
@@ -144,13 +148,8 @@ public class HiyariWidgetProvider extends AppWidgetProvider {
                 ? R.drawable.widget_hiyari_icon_ok
                 : R.drawable.widget_hiyari_icon_alert);
 
-        if (updatedToday) {
-            SimpleDateFormat format = new SimpleDateFormat(DATETIME_PATTERN, Locale.JAPAN);
-            views.setTextViewText(R.id.widget_hiyari_datetime, format.format(new Date(updatedAt)));
-            views.setViewVisibility(R.id.widget_hiyari_datetime, View.VISIBLE);
-        } else {
-            views.setViewVisibility(R.id.widget_hiyari_datetime, View.GONE);
-        }
+        SimpleDateFormat format = new SimpleDateFormat(DATE_PATTERN, Locale.JAPAN);
+        views.setTextViewText(R.id.widget_hiyari_date, format.format(new Date()));
 
         views.setOnClickPendingIntent(R.id.widget_hiyari_root, buildLaunchIntent(context));
         return views;
