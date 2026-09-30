@@ -4,6 +4,7 @@ import { Storage } from '@ionic/storage-angular';
 import { Capacitor } from '@capacitor/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { SQLite, SQLiteObject } from '@awesome-cordova-plugins/sqlite/ngx';
+import { File } from '@awesome-cordova-plugins/file/ngx';
 
 import { LoginService } from '../services/login.service';
 import { LogService } from '../services/log.service';
@@ -22,7 +23,8 @@ export class ScoreDbService {
     private loginService: LoginService,
     private logService: LogService,
     private storage: Storage,
-    private sqlite: SQLite) {
+    private sqlite: SQLite,
+    private file: File) {
   }
 
   public async initialize() {
@@ -527,15 +529,78 @@ export class ScoreDbService {
     return result;
   }
 
+  /**
+   * ヒヤリ録画ファイル本体を削除する（proposal #302）
+   *
+   * hiyari 行を消すと video_path が引けなくなるため、DELETE より前に呼ぶ。
+   * 消すのは hiyari.NN.webm だけで、走行ディレクトリそのものや同居する
+   * sensor-log / log / scoreLogic は残す（proposal #302 §4）。
+   *
+   * ファイル削除は 1 件ずつ握りつぶす。既に無い・権限が無いといった理由で
+   * DB の削除まで止まると、緯度・経度が端末に残ってしまう。位置情報の消去を
+   * 優先し、失敗はログだけ残して次へ進む。
+   */
+  private async deleteHiyariVideoFiles(id: string) {
+    if (!this.cordovaAvailable) {
+      return;
+    }
+
+    const select = "SELECT video_path FROM hiyari"
+      + " WHERE score_id IN ( SELECT score_id FROM score WHERE user_id = ? )"
+      + " AND video_path <> ''";
+
+    let paths = Array<string>();
+    try {
+      const result = await this.sqliteObject.executeSql(select, [id]);
+      for (let i=0; i<result.rows.length; i++) {
+        paths.push(result.rows.item(i).video_path);
+      }
+    } catch(error: any) {
+      this.logService.error('[DrivingScore][ScoreDbService] deleteHiyariVideoFiles: select error='
+        + error.message);
+      return;
+    }
+
+    let removed = 0;
+    let failed = 0;
+    for (const path of paths) {
+      const sep = path.lastIndexOf('/');
+      if (sep < 0) {
+        failed++;
+        continue;
+      }
+      // removeFile はディレクトリとファイル名を分けて渡す
+      const dir = path.substring(0, sep + 1);
+      const name = path.substring(sep + 1);
+      try {
+        await this.file.removeFile(dir, name);
+        removed++;
+      } catch(error: any) {
+        // 既に無いファイルもここへ来る。DB の削除は止めない
+        failed++;
+        this.logService.error('[DrivingScore][ScoreDbService] deleteHiyariVideoFiles: remove failed. path='
+          + path, error);
+      }
+    }
+
+    this.logService.debug('[DrivingScore][ScoreDbService] deleteHiyariVideoFiles: removed='
+      + removed + ' failed=' + failed + ' total=' + paths.length);
+  }
+
   async delete(id: string): Promise<boolean> {
     if (!this.cordovaAvailable ) {
       return true;
     }
 
+    // ヒヤリ録画ファイルを先に消す（proposal #302）。
+    // DB を消してからでは video_path が引けなくなるため、SELECT はこの順で行う。
+    // ファイル削除に失敗しても DB の削除は続ける。位置情報（緯度・経度）の
+    // 消去を優先する
+    await this.deleteHiyariVideoFiles(id);
+
     try {
       // ヒヤリ地点も消す（proposal #301）。hiyari は緯度・経度を持つので、
-      // アカウント削除後に位置情報だけ端末へ残さない。
-      // video_path が指す録画ファイル本体はこの DELETE では消えない（決定範囲外）
+      // アカウント削除後に位置情報だけ端末へ残さない
       const deleteTxt0 = 'DELETE FROM hiyari WHERE score_id IN ( SELECT score_id FROM score WHERE user_id = ? )';
       await this.sqliteObject.executeSql(deleteTxt0, [id]);
 
