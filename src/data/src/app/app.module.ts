@@ -16,6 +16,7 @@ import { Geolocation } from '@awesome-cordova-plugins/geolocation/ngx';
 import { DeviceMotion } from '@awesome-cordova-plugins/device-motion/ngx';
 import { Magnetometer } from '@awesome-cordova-plugins/magnetometer/ngx';
 import { SQLite } from '@awesome-cordova-plugins/sqlite/ngx';
+import { File } from '@awesome-cordova-plugins/file/ngx';
 //import { BLE } from '@awesome-cordova-plugins/ble/ngx';
 import { AndroidPermissions } from '@awesome-cordova-plugins/android-permissions/ngx';
 
@@ -36,6 +37,8 @@ import { AndroidPermissions } from '@awesome-cordova-plugins/android-permissions
     DeviceMotion,
     Magnetometer,
     SQLite,
+    // ScoreDbService が providedIn: 'root' でヒヤリ録画の削除に使う（proposal #302）
+    File,
     //BLE,
     AndroidPermissions,
     //Diagnostic,

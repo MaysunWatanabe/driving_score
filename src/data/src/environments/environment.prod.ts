@@ -15,6 +15,7 @@ export const environment = {
   lastLoginUserId: 'last-login-user-id',
   settingRecording: 'setting-recording',
   settingRecordingMargin: 'setting-recording-margin',
+  settingHiyariMarkerLimit: 'setting-hiyari-marker-limit',
   settingGpsDemo: 'setting-gps-demo',
   settingLogStorage: 'setting-log-storage',
   settingSensorLogStorage: 'setting-sensor-log-storage',

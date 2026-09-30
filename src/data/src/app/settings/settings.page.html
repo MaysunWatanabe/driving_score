@@ -48,6 +48,19 @@
     </ion-item>
     <ion-item>
       <div class="button_area">
+        <!--
+          地図に表示するヒヤリ件数（proposal #300）
+          無効化条件は設けない。録画の有無に関わらずヒヤリ地点は記録され、
+          地図表示は非 Android でも動くため
+        -->
+        地図に表示するヒヤリ件数（件）<br/>
+        <ion-input type="number" inputmode="numeric" min="1" max="100" step="1"
+          [value]="settingHiyariMarkerLimit"
+          (ionBlur)="onSettingHiyariMarkerLimit($event)"></ion-input>
+      </div>
+    </ion-item>
+    <ion-item>
+      <div class="button_area">
         アプリログを端末に保存<br/>
         <ion-segment value="{{settingLogStorage}}" (ionChange)="onSettingLogStorage($event)" [disabled]="!hasAndroid">
           <ion-segment-button value="enable">

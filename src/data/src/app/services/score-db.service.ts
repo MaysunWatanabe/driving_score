@@ -4,12 +4,13 @@ import { Storage } from '@ionic/storage-angular';
 import { Capacitor } from '@capacitor/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { SQLite, SQLiteObject } from '@awesome-cordova-plugins/sqlite/ngx';
+import { File } from '@awesome-cordova-plugins/file/ngx';
 
 import { LoginService } from '../services/login.service';
 import { LogService } from '../services/log.service';
 
 import { ScoreLogic } from '../data/score-logic';
-import { Score, Message, CapabilityScore } from '../data/score';
+import { Score, Message, CapabilityScore, HiyariPoint } from '../data/score';
 
 @Injectable({
   providedIn: 'root'
@@ -22,7 +23,8 @@ export class ScoreDbService {
     private loginService: LoginService,
     private logService: LogService,
     private storage: Storage,
-    private sqlite: SQLite) {
+    private sqlite: SQLite,
+    private file: File) {
   }
 
   public async initialize() {
@@ -85,12 +87,39 @@ export class ScoreDbService {
         ' score_c_message TEXT' +
         ');'
       , []);
+
+      // ヒヤリ地点（proposal #300）
+      //
+      // 従来ヒヤリは MapService のメモリ配列にしか無く、次の診断開始で消えていた。
+      // 日毎のヒヤリ回数と 1-2 の過去ヒヤリ表示にはどちらも永続化が要るため、
+      // db.score.repository §10 の「要整理」を解いて専用テーブルを設ける。
+      //
+      // 日毎の回数は集計テーブルを作らず、参照時に GROUP BY で都度算出する
+      // （ER 図 §7 / repository §7.3 の方針）。
+      await this.sqliteObject.executeSql(
+        'CREATE TABLE IF NOT EXISTS hiyari (' +
+        ' hiyari_id INTEGER PRIMARY KEY,' +
+        ' score_id INTEGER,' +      // 走行との紐付け（score.score_id）
+        ' timestamp INTEGER,' +     // ヒヤリ発生時刻（epoch ms）
+        ' latitude REAL,' +
+        ' longitude REAL,' +
+        ' video_time INTEGER,' +    // 切り出しファイル先頭からの秒。proposal #272 で常に 0
+        ' video_path TEXT' +        // hiyari.NN.webm のフルパス。動画が無ければ空文字
+        ');'
+      , []);
     } catch (error: any) {
       this.logService.error('[DrivingScore][ScoreDbService] createDb: error='+error.message);
     }
   }
 
-  async insertScore(scoreLogic: ScoreLogic): Promise<boolean> {
+  /**
+   * 走行 1 回ぶんの診断結果を保存する
+   *
+   * @param hiyariPoints ヒヤリ地点（proposal #300）。診断中に検知した順で渡す。
+   *                     score → score_history → capability_score → hiyari の順で書く
+   */
+  async insertScore(scoreLogic: ScoreLogic,
+    hiyariPoints: Array<HiyariPoint> = []): Promise<boolean> {
     if (!this.cordovaAvailable || scoreLogic.scoreList.length == 0) {
       this.logService.debug('[DrivingScore][ScoreDbService] insertScore: not insert');
       return true;
@@ -122,11 +151,127 @@ export class ScoreDbService {
       if (retCapabilityScore === false) {
         return false;
       }
+
+      // ヒヤリ地点をDBに保存（proposal #300）
+      const retHiyari = await this.insertHiyari(scoreLogic.startTimestamp, hiyariPoints);
+      if (retHiyari === false) {
+        return false;
+      }
     } catch(error: any) {
       this.logService.error('[DrivingScore][ScoreDbService] insertScore: error='+error.message);
       return false;
     }
     return true;
+  }
+
+  /**
+   * ヒヤリ地点を保存する（proposal #300）
+   *
+   * @param scoreId 走行の score_id（scoreLogic.startTimestamp）
+   * @param points  ヒヤリ地点。0 件なら何もしない
+   */
+  async insertHiyari(scoreId: number, points: Array<HiyariPoint>): Promise<boolean> {
+    if (!this.cordovaAvailable || points.length == 0) {
+      this.logService.debug('[DrivingScore][ScoreDbService] insertHiyari: not insert');
+      return true;
+    }
+
+    let values = '';
+    const data = Array();
+    for (const point of points) {
+      if (values != '') {
+        values += ', ';
+      }
+      values += '(?, ?, ?, ?, ?, ?)';
+      data.push(scoreId);
+      data.push(point.timestamp);
+      data.push(point.latitude);
+      data.push(point.longitude);
+      data.push(point.videoTime);
+      data.push(point.videoPath);
+    }
+
+    const insert = 'INSERT INTO hiyari'
+      + ' (score_id, timestamp, latitude, longitude, video_time, video_path)'
+      + ' VALUES ' + values;
+
+    try {
+      await this.sqliteObject.executeSql(insert, data);
+      this.logService.debug('[DrivingScore][ScoreDbService] insertHiyari: count='
+        + points.length + ' scoreId=' + scoreId);
+    } catch(error: any) {
+      this.logService.error('[DrivingScore][ScoreDbService] insertHiyari: error='+error.message);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 直近のヒヤリ地点を新しい順に取得する（proposal #300）
+   *
+   * 件数は呼び出し側が渡す。MapService には上限を持たせない
+   * （middleware.map.service の未確定点を「呼び出し側で絞る」で解いた）。
+   *
+   * @param limit 取得件数。設定「地図に表示するヒヤリ件数」の値（既定 10）
+   */
+  async selectRecentHiyari(limit: number): Promise<Array<HiyariPoint>> {
+    const list = Array<HiyariPoint>();
+    if (!this.cordovaAvailable) {
+      return list;
+    }
+
+    const select = 'SELECT score_id, timestamp, latitude, longitude, video_time, video_path'
+      + ' FROM hiyari WHERE score_id IN ( SELECT score_id FROM score WHERE user_id = ? )'
+      + ' ORDER BY timestamp DESC LIMIT ?';
+
+    try {
+      const result = await this.sqliteObject.executeSql(select,
+        [this.loginService.loginUser.userId, limit]);
+      for (let i=0; i<result.rows.length; i++) {
+        const row = result.rows.item(i);
+        list.push({
+          timestamp: row.timestamp,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          videoTime: row.video_time,
+          videoPath: row.video_path
+        });
+      }
+    } catch(error: any) {
+      this.logService.error('[DrivingScore][ScoreDbService] selectRecentHiyari: error='+error.message);
+    }
+    return list;
+  }
+
+  /**
+   * 日毎のヒヤリ件数を新しい日から順に取得する（proposal #300）
+   *
+   * 集計テーブルは持たず、参照時に都度算出する（ER 図 §7 / repository §7.3）。
+   * timestamp は epoch ms なので、秒へ直してから端末のローカル日付へ変換する。
+   *
+   * @param limit 取得する日数
+   */
+  async selectDailyHiyariCount(limit: number): Promise<Array<{ date: string, count: number }>> {
+    const list = Array<{ date: string, count: number }>();
+    if (!this.cordovaAvailable) {
+      return list;
+    }
+
+    const select = "SELECT date(timestamp/1000, 'unixepoch', 'localtime') AS d, COUNT(*) AS c"
+      + ' FROM hiyari WHERE score_id IN ( SELECT score_id FROM score WHERE user_id = ? )'
+      + ' GROUP BY d ORDER BY d DESC LIMIT ?';
+
+    try {
+      const result = await this.sqliteObject.executeSql(select,
+        [this.loginService.loginUser.userId, limit]);
+      for (let i=0; i<result.rows.length; i++) {
+        const row = result.rows.item(i);
+        list.push({ date: row.d, count: row.c });
+      }
+    } catch(error: any) {
+      this.logService.error('[DrivingScore][ScoreDbService] selectDailyHiyariCount: error='+error.message);
+    }
+    return list;
   }
 
   async insertScoreHistory(scoreLogic: ScoreLogic, pos: number): Promise<boolean> {
@@ -384,12 +529,81 @@ export class ScoreDbService {
     return result;
   }
 
+  /**
+   * ヒヤリ録画ファイル本体を削除する（proposal #302）
+   *
+   * hiyari 行を消すと video_path が引けなくなるため、DELETE より前に呼ぶ。
+   * 消すのは hiyari.NN.webm だけで、走行ディレクトリそのものや同居する
+   * sensor-log / log / scoreLogic は残す（proposal #302 §4）。
+   *
+   * ファイル削除は 1 件ずつ握りつぶす。既に無い・権限が無いといった理由で
+   * DB の削除まで止まると、緯度・経度が端末に残ってしまう。位置情報の消去を
+   * 優先し、失敗はログだけ残して次へ進む。
+   */
+  private async deleteHiyariVideoFiles(id: string) {
+    if (!this.cordovaAvailable) {
+      return;
+    }
+
+    const select = "SELECT video_path FROM hiyari"
+      + " WHERE score_id IN ( SELECT score_id FROM score WHERE user_id = ? )"
+      + " AND video_path <> ''";
+
+    let paths = Array<string>();
+    try {
+      const result = await this.sqliteObject.executeSql(select, [id]);
+      for (let i=0; i<result.rows.length; i++) {
+        paths.push(result.rows.item(i).video_path);
+      }
+    } catch(error: any) {
+      this.logService.error('[DrivingScore][ScoreDbService] deleteHiyariVideoFiles: select error='
+        + error.message);
+      return;
+    }
+
+    let removed = 0;
+    let failed = 0;
+    for (const path of paths) {
+      const sep = path.lastIndexOf('/');
+      if (sep < 0) {
+        failed++;
+        continue;
+      }
+      // removeFile はディレクトリとファイル名を分けて渡す
+      const dir = path.substring(0, sep + 1);
+      const name = path.substring(sep + 1);
+      try {
+        await this.file.removeFile(dir, name);
+        removed++;
+      } catch(error: any) {
+        // 既に無いファイルもここへ来る。DB の削除は止めない
+        failed++;
+        this.logService.error('[DrivingScore][ScoreDbService] deleteHiyariVideoFiles: remove failed. path='
+          + path, error);
+      }
+    }
+
+    this.logService.debug('[DrivingScore][ScoreDbService] deleteHiyariVideoFiles: removed='
+      + removed + ' failed=' + failed + ' total=' + paths.length);
+  }
+
   async delete(id: string): Promise<boolean> {
     if (!this.cordovaAvailable ) {
       return true;
     }
 
+    // ヒヤリ録画ファイルを先に消す（proposal #302）。
+    // DB を消してからでは video_path が引けなくなるため、SELECT はこの順で行う。
+    // ファイル削除に失敗しても DB の削除は続ける。位置情報（緯度・経度）の
+    // 消去を優先する
+    await this.deleteHiyariVideoFiles(id);
+
     try {
+      // ヒヤリ地点も消す（proposal #301）。hiyari は緯度・経度を持つので、
+      // アカウント削除後に位置情報だけ端末へ残さない
+      const deleteTxt0 = 'DELETE FROM hiyari WHERE score_id IN ( SELECT score_id FROM score WHERE user_id = ? )';
+      await this.sqliteObject.executeSql(deleteTxt0, [id]);
+
       const deleteTxt1 = 'DELETE FROM capability_score WHERE score_id IN ( SELECT score_id FROM score WHERE user_id = ? )';
       await this.sqliteObject.executeSql(deleteTxt1, [id]);
 

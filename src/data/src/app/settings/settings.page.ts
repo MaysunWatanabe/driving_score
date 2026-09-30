@@ -21,6 +21,7 @@ export class SettingsPage implements OnInit {
   public settingRecording: string;
   // 「ヒヤリ前後秒数」入力欄の表示値（整数秒）
   public settingRecordingMargin: number;
+  public settingHiyariMarkerLimit: number;
   public settingGpsDemo: string;
   public settingLogStorage: string;
   public settingSensorLogStorage: string;
@@ -69,6 +70,7 @@ export class SettingsPage implements OnInit {
 
     this.settingRecording = this.loginService.settings.recording ? 'enable' : 'disable';
     this.settingRecordingMargin = this.loginService.settings.recordingMargin ?? 15;
+    this.settingHiyariMarkerLimit = this.loginService.settings.hiyariMarkerLimit ?? 10;
     this.settingGpsDemo = this.loginService.settings.gpsDemo ? 'enable' : 'disable';
     this.settingLogStorage = this.loginService.settings.logStorage ? 'enable' : 'disable';
     this.settingSensorLogStorage = this.loginService.settings.sensorLogStorage ? 'enable' : 'disable';
@@ -118,6 +120,33 @@ export class SettingsPage implements OnInit {
     this.loginService.settings.recordingMargin = value;
     this.settingRecordingMargin = value;
     await this.storage.set(environment.settingRecordingMargin, value);
+  }
+
+  /**
+   * 地図に表示するヒヤリ件数（proposal #300）
+   *
+   * 検証は ionBlur で行う。ionChange だと「10」を打つ途中の「1」が
+   * 範囲外として戻され入力できない（fact #4688）。
+   * 無効値はダイアログを出さず、直前の保存値へ戻す（fact #4701 / #4702）。
+   */
+  async onSettingHiyariMarkerLimit(e: any) {
+    const raw = e?.target?.value;
+    const value = (raw === '' || raw === null || raw === undefined) ? NaN : Number(raw);
+
+    if (!Number.isInteger(value) || value < 1 || 100 < value) {
+      // [value] は片方向バインディングなので、フィールドへ代入するだけでは
+      // DOM が書き換わらない。要素へ直接書き戻す（fact #4702）
+      const restored = this.loginService.settings.hiyariMarkerLimit ?? 10;
+      this.settingHiyariMarkerLimit = restored;
+      if (e?.target != null) {
+        e.target.value = restored;
+      }
+      return;
+    }
+
+    this.loginService.settings.hiyariMarkerLimit = value;
+    this.settingHiyariMarkerLimit = value;
+    await this.storage.set(environment.settingHiyariMarkerLimit, value);
   }
 
   async onSettingGpsDemo(e: any) {
