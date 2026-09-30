@@ -30,10 +30,14 @@
 
         <!--
             ヒヤリ表示ウィジェット 2-1a の receiver は src/debug/AndroidManifest.xml
-            にある（proposal #299）。表示値がすべて固定文字列の検証用なので、
-            release ビルドには出さない。
-            HiyariWidgetProvider と res/ は src/main に置いたまま。receiver 宣言が
-            無ければ OS から参照されず、本格実装で main へ戻す差分も小さく保てる。
+            にある（proposal #299 / fact #4761）。色・文言が未確定の提案用
+            プロトタイプなので、release ビルドには出さない。
+            HiyariWidgetProvider / HiyariWidgetPlugin と res/ は src/main に置いた
+            まま。receiver 宣言が無ければ OS から参照されず、本格実装で main へ
+            戻す差分も小さく保てる。
+            HiyariWidgetPlugin は MainActivity から登録されるため release にも
+            含まれるが、ウィジェットが 0 件なので SharedPreferences へ書くだけの
+            no-op になる。
         -->
 
         <provider

@@ -2,9 +2,13 @@
 <!--
   debug ビルド専用の追加分（proposal #299）
 
-  ヒヤリ表示ウィジェット 2-1a は二次仕様の技術検証用で、表示値はすべて
-  固定文字列（proposal #298）。本番の利用者に意味のない部品を見せないよう、
-  receiver をここへ置いて release ビルドから外す。
+  ヒヤリ表示ウィジェット 2-1a は先方へ見せるための提案用プロトタイプで、
+  色・文言・アイコンはいずれも確定仕様ではない（proposal #303 §5）。
+  本番の利用者に未確定の部品を見せないよう、receiver をここへ置いて
+  release ビルドから外す。
+
+  本日のヒヤリ件数を表示するようになったが（proposal #303 / #304 / #305）、
+  debug 限定は維持する。
 
   HiyariWidgetProvider と res/（layout / xml / drawable / strings）は
   src/main に置いたまま。receiver 宣言が無ければ OS から参照されないため

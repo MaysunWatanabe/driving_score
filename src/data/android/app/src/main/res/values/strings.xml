@@ -5,9 +5,13 @@
     <string name="package_name">jp.co.nissan.drivingscore</string>
     <string name="custom_url_scheme">jp.co.nissan.drivingscore</string>
 
-    <!-- ヒヤリ表示ウィジェット 2-1a（proposal #298）。骨組みのため固定文字列 -->
+    <!--
+        ヒヤリ表示ウィジェット 2-1a（proposal #303 §5）
+        件数と日時は HiyariWidgetProvider が実行時に流し込む。
+        骨組み（proposal #298）の固定文字列 widget_hiyari_datetime /
+        widget_hiyari_count / widget_hiyari_message は役目を終えたので消した。
+    -->
     <string name="widget_hiyari_label">ヒヤリ表示</string>
-    <string name="widget_hiyari_datetime">9/29 (火)　16:29</string>
-    <string name="widget_hiyari_count">ヒヤリ 0</string>
-    <string name="widget_hiyari_message">今日の運転はヒヤリがなかったよ</string>
+    <string name="widget_hiyari_title">今日のヒヤリ</string>
+    <string name="widget_hiyari_count_format">%1$d 件</string>
 </resources>
