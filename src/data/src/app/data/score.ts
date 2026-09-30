@@ -221,3 +221,20 @@ export class Score {
       }
     }
 }
+
+/**
+ * ヒヤリ地点（proposal #300）
+ *
+ * hiyari テーブルの 1 行に対応する。診断終了時に insertScore() から保存し、
+ * 1-2（前回結果表示）や 2-2（診断結果画面）が参照する。
+ */
+export interface HiyariPoint {
+    /** ヒヤリ発生時刻（epoch ms） */
+    timestamp: number;
+    latitude: number;
+    longitude: number;
+    /** 切り出しファイル先頭からのオフセット秒。proposal #272 により常に 0 */
+    videoTime: number;
+    /** hiyari.NN.webm のフルパス。録画無効・非 Android では空文字 */
+    videoPath: string;
+}

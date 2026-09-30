@@ -28,6 +28,8 @@ export class LoginService {
     recording: false,
     // ヒヤリ前後秒数（整数秒）。診断開始時に ui.driving.page が 1 回読む
     recordingMargin: 15,
+    // 地図に表示するヒヤリ件数（proposal #300）。1-2 の表示時に読む
+    hiyariMarkerLimit: 10,
     gpsDemo: true,
     logStorage: false,
     sensorLogStorage: false,
@@ -73,6 +75,7 @@ export class LoginService {
 
     this.settings.recording = await this.storage.get(environment.settingRecording) ?? true;
     this.settings.recordingMargin = await this.storage.get(environment.settingRecordingMargin) ?? 15;
+    this.settings.hiyariMarkerLimit = await this.storage.get(environment.settingHiyariMarkerLimit) ?? 10;
     this.settings.gpsDemo = await this.storage.get(environment.settingGpsDemo) ?? false;
     this.settings.logStorage = await this.storage.get(environment.settingLogStorage) ?? false;
     this.settings.sensorLogStorage = await this.storage.get(environment.settingSensorLogStorage) ?? false;

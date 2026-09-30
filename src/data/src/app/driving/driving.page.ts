@@ -14,7 +14,7 @@ import { LogService } from '../services/log.service';
 
 import { ScoreDbService } from '../services/score-db.service';
 import { ScoreLogic } from '../data/score-logic';
-import { Score, Message } from '../data/score';
+import { Score, Message, HiyariPoint } from '../data/score';
 import { DemoData } from '../data/demo-data';
 
 import { environment } from '../../environments/environment';
@@ -139,6 +139,14 @@ export class DrivingPage implements OnInit {
   private hiyariWriteQueue: Promise<void> = Promise.resolve();
   /** 書き込みの通し番号。順序検証ログ用（proposal #263） */
   private hiyariWriteSeq: number = 0;
+
+  /**
+   * この走行で検知したヒヤリ地点（proposal #300）
+   *
+   * 診断終了時に insertScore() へ渡して DB へ保存する。マーカーは MapService の
+   * メモリ配列にしか無く次の診断開始で消えるため、永続化の経路をここに持つ。
+   */
+  private hiyariPoints: Array<HiyariPoint> = [];
 
   private autoScrollLock: boolean = false;
 
@@ -303,6 +311,9 @@ export class DrivingPage implements OnInit {
 
     this.logService.debug('[DrivingScore][DrivingPage] onStart');
 
+    // 走行 1 回ぶんのヒヤリ地点を集め直す（proposal #300）
+    this.hiyariPoints.splice(0);
+
     // センサーに運転診断開始を通知
     this.sensorService.startScoreLogic();
 
@@ -355,8 +366,8 @@ export class DrivingPage implements OnInit {
     // 全ての地点が収まるスケールにフィットさせる
     this.mapService.fitBounds();
 
-    // 運転診断結果をDBへ保存
-    this.scoreDbService.insertScore(this.scoreLogic);
+    // 運転診断結果とヒヤリ地点をDBへ保存（proposal #300）
+    this.scoreDbService.insertScore(this.scoreLogic, this.hiyariPoints);
 
     // 最後の診断件結果のIDを保存（別のページで使う）
     this.loginService.scoreId = this.scoreLogic.startTimestamp;
@@ -942,6 +953,29 @@ export class DrivingPage implements OnInit {
   }
 
   /**
+   * lastLatLng から緯度または経度を数値で取り出す（proposal #300）
+   *
+   * lastLatLng は 2 つの形を取る。
+   * ・sensorService.getLastLatLng() の戻り値 …… プレーンな { lat, lng }
+   * ・updateSensor() が作る値 ……………………… google.maps.LatLng（lat() / lng()）
+   *
+   * 診断開始直後、地図が 1 度も更新されないうちにヒヤリが出ると前者になる。
+   * 実機で 1 件目のヒヤリが「latLng.lat is not a function」で落ちたため両対応にする。
+   *
+   * @param isLat true なら緯度、false なら経度
+   */
+  private toLatLngNumber(latLng: any, isLat: boolean): number {
+    if (latLng == null) {
+      return 0;
+    }
+    const fn = isLat ? latLng.lat : latLng.lng;
+    if (typeof fn === 'function') {
+      return fn.call(latLng);
+    }
+    return Number(isLat ? latLng.lat : latLng.lng) || 0;
+  }
+
+  /**
    * ヒヤリ地点を地図に描画
    * @param {Score} 運転診断ロジックの実行結果
    */
@@ -997,6 +1031,17 @@ export class DrivingPage implements OnInit {
       // ディレクトリを画面単位で 1 つ持つ方式では表現できない。
       videoPath == '' ? '' : (this.saveDirectoryPath + videoPath)
     );
+
+    // DB 保存用にも控える（proposal #300）。マーカーは次の診断開始で消えるため、
+    // 永続化はこちらの配列を診断終了時に insertScore() へ渡して行う
+    this.hiyariPoints.push({
+      timestamp: Date.now(),
+      latitude: this.toLatLngNumber(latLng, true),
+      longitude: this.toLatLngNumber(latLng, false),
+      videoTime: videoTime,
+      videoPath: videoPath == '' ? '' : (this.saveDirectoryPath + videoPath)
+    });
+
     this.logService.debug('[DrivingScore][DrivingPage] pushBadPoint: add bad point');
   }
 
