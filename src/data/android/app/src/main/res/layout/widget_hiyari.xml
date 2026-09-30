@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ヒヤリ表示ウィジェット 2-1a 相当のレイアウト（proposal #298）
+
+  骨組みの技術検証用。表示値はすべて固定文字列で、実データは参照しない。
+  RemoteViews は TextView / ImageView / LinearLayout / ListView 等しか
+  扱えないため、Ionic の画面資産は流用できない。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_hiyari_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@drawable/widget_hiyari_background">
+
+    <TextView
+        android:id="@+id/widget_hiyari_datetime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/widget_hiyari_datetime"
+        android:textColor="#666666"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_hiyari_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/widget_hiyari_count"
+        android:textColor="#0B2D5B"
+        android:textSize="24sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_hiyari_message"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/widget_hiyari_message"
+        android:textColor="#1A1A1A"
+        android:textSize="13sp" />
+
+</LinearLayout>

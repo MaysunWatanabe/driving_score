@@ -28,6 +28,14 @@
 
         <meta-data android:name="com.google.android.geo.API_KEY" android:value="${GOOGLE_MAPS_API_KEY}"/>
 
+        <!--
+            ヒヤリ表示ウィジェット 2-1a の receiver は src/debug/AndroidManifest.xml
+            にある（proposal #299）。表示値がすべて固定文字列の検証用なので、
+            release ビルドには出さない。
+            HiyariWidgetProvider と res/ は src/main に置いたまま。receiver 宣言が
+            無ければ OS から参照されず、本格実装で main へ戻す差分も小さく保てる。
+        -->
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

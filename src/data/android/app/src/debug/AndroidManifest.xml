@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  debug ビルド専用の追加分（proposal #299）
+
+  ヒヤリ表示ウィジェット 2-1a は二次仕様の技術検証用で、表示値はすべて
+  固定文字列（proposal #298）。本番の利用者に意味のない部品を見せないよう、
+  receiver をここへ置いて release ビルドから外す。
+
+  HiyariWidgetProvider と res/（layout / xml / drawable / strings）は
+  src/main に置いたまま。receiver 宣言が無ければ OS から参照されないため
+  release APK では未使用リソースとして残るだけで、本格実装で main へ
+  戻すときの差分もこの manifest の数行で済む。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="jp.co.nissan.drivingscore">
+
+    <application>
+        <receiver
+            android:name="jp.co.nissan.drivingscore.HiyariWidgetProvider"
+            android:label="@string/widget_hiyari_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_hiyari_info" />
+        </receiver>
+    </application>
+
+</manifest>
