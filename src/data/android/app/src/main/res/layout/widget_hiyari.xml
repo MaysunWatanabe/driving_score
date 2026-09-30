@@ -1,44 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ヒヤリ表示ウィジェット 2-1a 相当のレイアウト（proposal #298）
+  ヒヤリ表示ウィジェット 2-1a のレイアウト（proposal #303 §5）
 
-  骨組みの技術検証用。表示値はすべて固定文字列で、実データは参照しない。
-  RemoteViews は TextView / ImageView / LinearLayout / ListView 等しか
-  扱えないため、Ionic の画面資産は流用できない。
+  左にアイコン、右に情報を置く横並び。背景は白固定で、状態はアイコンと
+  文字色で表す。骨組み（proposal #298）の縦 3 行から差し替えた。
+
+  表示値は HiyariWidgetProvider が実行時に流し込む。ここで固定文字列を
+  持つのはラベルだけ（常に「今日のヒヤリ」）。
+
+  日時行は「最終更新時刻」で、本日の更新が無いときは Provider が
+  View.GONE で隠す（proposal #305）。そのとき 2 行になるため、
+  右カラムは縦中央揃えにしてアイコンとの位置関係を保つ。
+
+  RemoteViews は TextView / ImageView / LinearLayout 等しか扱えない。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_hiyari_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="12dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="14dp"
     android:background="@drawable/widget_hiyari_background">
 
-    <TextView
-        android:id="@+id/widget_hiyari_datetime"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/widget_hiyari_datetime"
-        android:textColor="#666666"
-        android:textSize="12sp" />
+    <ImageView
+        android:id="@+id/widget_hiyari_icon"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginEnd="14dp"
+        android:layout_marginRight="14dp"
+        android:contentDescription="@string/widget_hiyari_title"
+        android:src="@drawable/widget_hiyari_icon_ok" />
 
-    <TextView
-        android:id="@+id/widget_hiyari_count"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="@string/widget_hiyari_count"
-        android:textColor="#0B2D5B"
-        android:textSize="24sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/widget_hiyari_message"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:text="@string/widget_hiyari_message"
-        android:textColor="#1A1A1A"
-        android:textSize="13sp" />
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_hiyari_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/widget_hiyari_title"
+            android:textColor="#1A1A1A"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/widget_hiyari_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:textColor="#2E7D32"
+            android:textSize="32sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_hiyari_datetime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="#666666"
+            android:textSize="11sp" />
+
+    </LinearLayout>
 
 </LinearLayout>

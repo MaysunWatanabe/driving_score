@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ヒヤリ表示ウィジェット 2-1a の定義（proposal #298）
+  ヒヤリ表示ウィジェット 2-1a の定義（proposal #298 / #303 / #304）
 
   updatePeriodMillis は 0。OS による定期更新は行わない。
   30 分という下限は OS の定期更新にのみ適用される制約であり、
   AppWidgetManager.updateAppWidget() による明示更新は即時反映される。
-  本実装ではヒヤリ検知時の更新呼び出しまでは作らない（proposal #298 対象外）。
+  更新は HiyariWidgetPlugin（ヒヤリ検知時・診断終了時）と深夜 0 時の
+  AlarmManager から起こす（proposal #303 §4 / #304 §3）。
 
   サイズは 1 種類のみ用意する。targetCellWidth / targetCellHeight
   （Android 12 以降）は targetSdkVersion 32 据え置きのため使わない。
