@@ -1,16 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ヒヤリ表示ウィジェット 2-1a のレイアウト（fact #4765 / proposal #306 / #307）
+  ヒヤリ表示ウィジェット 2-1a のレイアウト（fact #4765 / #4768 / #4769 / proposal #308）
 
-  左にアイコン、右に情報を置く横並び。背景は白固定で、状態はアイコンと
-  文字色で表す。
+  3 列 × 1 行に収めるため、縦に積んでいた 3 段をやめて横幅を使う
+  （proposal #308）。左からアイコン →「日付 / ラベル」の 2 段 →
+  件数（右寄せ）。アイコンと件数でウィジェットの両端を締める。
 
-  右カラムは 日付 → ラベル → 件数 の順（proposal #307）。上から
-  「2026/9/30 の / 今日のヒヤリ / 4 件」と素直に読める並びにする。
-
-  1 行目は「この件数が対象とする日」で、描画時点の端末ローカル日付を
-  常に出す（proposal #306）。最終更新時刻を出して本日以外は隠す方式
-  （fact #4767）は撤回した。どの状態でも 3 行で一定になる。
+  読み順は 日付 → ラベル → 件数 のまま（fact #4769）。日付は
+  「この件数が対象とする日」で、描画時点の端末ローカル日付を常に出す
+  （fact #4768）。
 
   表示値は HiyariWidgetProvider が実行時に流し込む。ここで固定文字列を
   持つのはラベルだけ（常に「今日のヒヤリ」）。
@@ -23,27 +21,31 @@
     android:layout_height="match_parent"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:padding="14dp"
+    android:padding="10dp"
     android:background="@drawable/widget_hiyari_background">
 
     <ImageView
         android:id="@+id/widget_hiyari_icon"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_marginEnd="14dp"
-        android:layout_marginRight="14dp"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_marginEnd="10dp"
+        android:layout_marginRight="10dp"
         android:contentDescription="@string/widget_hiyari_title"
         android:src="@drawable/widget_hiyari_icon_ok" />
 
+    <!-- 日付とラベル。件数に幅を譲るため layout_weight=1 で余りを吸収する -->
     <LinearLayout
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_weight="1"
         android:orientation="vertical">
 
         <TextView
             android:id="@+id/widget_hiyari_date"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:maxLines="1"
             android:textColor="#666666"
             android:textSize="11sp" />
 
@@ -51,20 +53,25 @@
             android:id="@+id/widget_hiyari_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="1dp"
+            android:includeFontPadding="false"
+            android:maxLines="1"
             android:text="@string/widget_hiyari_title"
             android:textColor="#1A1A1A"
             android:textSize="13sp" />
 
-        <TextView
-            android:id="@+id/widget_hiyari_count"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:textColor="#2E7D32"
-            android:textSize="32sp"
-            android:textStyle="bold" />
-
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_hiyari_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginLeft="8dp"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textColor="#2E7D32"
+        android:textSize="28sp"
+        android:textStyle="bold" />
 
 </LinearLayout>

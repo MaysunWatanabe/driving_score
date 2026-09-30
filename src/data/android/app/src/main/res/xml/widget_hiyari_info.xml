@@ -1,20 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ヒヤリ表示ウィジェット 2-1a の定義（proposal #298 / #303 / #304）
+  ヒヤリ表示ウィジェット 2-1a の定義（fact #4760 / proposal #303 / #304 / #308）
 
-  updatePeriodMillis は 0。OS による定期更新は行わない。
+  updatePeriodMillis は 0（fact #4760）。OS による定期更新は行わない。
   30 分という下限は OS の定期更新にのみ適用される制約であり、
   AppWidgetManager.updateAppWidget() による明示更新は即時反映される。
   更新は HiyariWidgetPlugin（ヒヤリ検知時・診断終了時）と深夜 0 時の
   AlarmManager から起こす（proposal #303 §4 / #304 §3）。
 
-  サイズは 1 種類のみ用意する。targetCellWidth / targetCellHeight
-  （Android 12 以降）は targetSdkVersion 32 据え置きのため使わない。
+  大きさは 3 列 × 1 行（proposal #308）。Android のセル換算式は
+  minWidth = 70n - 30 なので、180dp が 3 列、40dp が 1 行にあたる。
+  targetCellWidth / targetCellHeight は API 31 以降で優先され、3×1 が
+  そのまま反映される。minSdkVersion 22 の端末では無視され、minWidth /
+  minHeight に従うので後方互換は壊れない。
+
+  用意するサイズは引き続き 1 種類のみ（論点 N3 は保留）。ここで変えて
+  いるのはその 1 種類の寸法であって、複数サイズを足すものではない。
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:initialLayout="@layout/widget_hiyari"
     android:minWidth="180dp"
-    android:minHeight="110dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="1"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />
