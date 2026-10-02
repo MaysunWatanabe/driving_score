@@ -5,7 +5,7 @@ import { File } from '@awesome-cordova-plugins/file/ngx';
 
 import { Platform, NavController, AlertController } from '@ionic/angular';
 import { Storage } from '@ionic/storage-angular';
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 
 import { LoginService } from '../services/login.service';
 import { MapService } from '../services/map.service';
@@ -18,17 +18,6 @@ import { Score, Message, HiyariPoint } from '../data/score';
 import { DemoData } from '../data/demo-data';
 
 import { environment } from '../../environments/environment';
-
-/**
- * 本日のヒヤリ件数をホーム画面ウィジェットへ渡すプラグイン（proposal #303 §3）
- *
- * ネイティブ実体は android/app/src/main/java/jp/co/nissan/drivingscore/
- * HiyariWidgetPlugin.java。SharedPreferences へ書いてウィジェットを描き直す。
- * Android 以外では呼ばない（updateHiyariWidget() で弾く）。
- */
-const HiyariWidget = registerPlugin<{
-  update(options: { count: number }): Promise<void>;
-}>('HiyariWidget');
 
 declare var google: any;
 
@@ -378,11 +367,7 @@ export class DrivingPage implements OnInit {
     this.mapService.fitBounds();
 
     // 運転診断結果とヒヤリ地点をDBへ保存（proposal #300）
-    // 保存が終わったらウィジェットを DB の値と一致させる（proposal #303 §4）。
-    // この時点で今回のぶんは DB に入っているため pendingCount は 0。
-    // await しないのは、終了ダイアログの表示タイミングを変えないため
-    this.scoreDbService.insertScore(this.scoreLogic, this.hiyariPoints)
-      .then(() => this.updateHiyariWidget(0));
+    this.scoreDbService.insertScore(this.scoreLogic, this.hiyariPoints);
 
     // 最後の診断件結果のIDを保存（別のページで使う）
     this.loginService.scoreId = this.scoreLogic.startTimestamp;
@@ -965,29 +950,31 @@ export class DrivingPage implements OnInit {
       }
     }
     this.pushBadPoint(score, fileName);
-
-    // 検知するたびウィジェットの件数を更新する（proposal #303 §4）。
-    // DB へはまだ書かれていないので、今回の走行ぶんは hiyariPoints から足す
-    this.updateHiyariWidget(this.hiyariPoints.length);
   }
 
   /**
-   * ホーム画面ウィジェットへ本日のヒヤリ件数を渡す（proposal #303 §4）
+   * 本日のヒヤリ件数を数える（proposal #359 / 元は proposal #303 §4）
    *
    * 件数は「DB に保存済みの本日ぶん」＋ pendingCount で求める。
    * 診断終了まで DB へは書かれないため、走行中は DB だけでは足りない。
+   * 逆に診断終了後は今回のぶんが DB に入っているので、pendingCount に 0 を渡さないと
+   * 二重に数えてしまう。実機で確認した規則なので、呼び出し側は必ず使い分けること。
+   *
+   * ホーム画面ウィジェット（A案）は proposal #359 で撤去した。この算出規則だけを残し、
+   * 2-1a のアプリ内画面（論点 C6 / C7）から呼び直す。それまでは呼び出し元が無い。
    *
    * @param pendingCount まだ DB へ書かれていない今回の走行ぶんの件数。
    *                     診断終了後（insertScore 完了後）は 0 を渡す
+   * @returns 本日のヒヤリ件数。取得に失敗したら 0
    */
-  private async updateHiyariWidget(pendingCount: number) {
+  private async countTodayHiyari(pendingCount: number): Promise<number> {
     if (!this.hasAndroid) {
-      return;
+      return 0;
     }
 
     try {
       // selectDailyHiyariCount(1) の先頭行が本日と一致すればその件数、
-      // しなければ 0 を基数とする（proposal #303 §4）
+      // しなければ 0 を基数とする
       let base = 0;
       const daily = await this.scoreDbService.selectDailyHiyariCount(1);
       if (0 < daily.length && daily[0].date == this.todayText()) {
@@ -995,17 +982,17 @@ export class DrivingPage implements OnInit {
       }
 
       const count = base + pendingCount;
-      await HiyariWidget.update({ count: count });
-      this.logService.debug('[DrivingScore][DrivingPage] updateHiyariWidget. count=' + count
+      this.logService.debug('[DrivingScore][DrivingPage] countTodayHiyari. count=' + count
         + ' base=' + base + ' pending=' + pendingCount);
+      return count;
     } catch (error) {
-      // ウィジェットは提案用プロトタイプ。失敗しても診断そのものは続ける
-      this.logService.error('[DrivingScore][DrivingPage] updateHiyariWidget failed.', error);
+      this.logService.error('[DrivingScore][DrivingPage] countTodayHiyari failed.', error);
+      return 0;
     }
   }
 
   /**
-   * 本日の日付を selectDailyHiyariCount の書式に揃えて返す（proposal #303 §4）
+   * 本日の日付を selectDailyHiyariCount の書式に揃えて返す（proposal #359 / 元は proposal #303 §4）
    *
    * DB 側は date(timestamp/1000, 'unixepoch', 'localtime') で
    * 端末のローカル日付を 'YYYY-MM-DD' で返す（proposal #300 §3）。
